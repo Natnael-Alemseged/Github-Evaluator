@@ -1,19 +1,63 @@
-# TODO: Import docling modules once installed
-# from docling.document import DoclingDocument
-# from docling.chunking import HybridChunker
+import os
+import shutil
+from typing import List, Optional
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
 
-def ingest_pdf(file_path: str) -> list[str]:
-    """Stub: Ingest and chunk a PDF using Docling."""
-    # TODO: Implement docling parsing
-    # doc = DoclingDocument.load(file_path)
-    # chunker = HybridChunker()
-    # chunks = chunker.chunk(doc)
+# Configuration for Vector DB
+FAISS_PATH = "faiss_index"
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+# Initialize embeddings once
+embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+
+def get_vector_store() -> Optional[FAISS]:
+    """Load the persistent vector store if it exists."""
+    if os.path.exists(FAISS_PATH):
+        try:
+            return FAISS.load_local(FAISS_PATH, embeddings, allow_dangerous_deserialization=True)
+        except Exception as e:
+            print(f"Error loading FAISS index: {e}")
+    return None
+
+def clear_vector_store():
+    """Wipe the local vector database."""
+    if os.path.exists(FAISS_PATH):
+        shutil.rmtree(FAISS_PATH)
+        print("Vector store cleared.")
+
+def ingest_pdf(file_path: str) -> List[str]:
+    """Stub: Ingest and chunk a PDF, then add to Vector Store."""
     print(f"Stub: Ingesting PDF {file_path}")
-    return ["Chunk 1: Project overview", "Chunk 2: Dependency requirements"]
+    chunks = [
+        f"Project overview from {file_path}",
+        f"Dependency management details from {file_path}",
+        f"Graph architecture specs from {file_path}"
+    ]
+    
+    # Store in FAISS
+    vector_store = get_vector_store()
+    if vector_store:
+        vector_store.add_texts(chunks)
+    else:
+        vector_store = FAISS.from_texts(chunks, embeddings)
+    
+    vector_store.save_local(FAISS_PATH)
+    return chunks
 
-def query_pdf(query: str, chunks: list[str]) -> str:
-    """Stub: Simple search or RAG over standard PDF chunks."""
-    # TODO: Vectorize chunks and perform similarity search
-    print(f"Stub: Querying chunks for '{query}'")
-    matches = [c for c in chunks if query.lower() in c.lower()]
-    return "\n".join(matches) if matches else "No relevant information found."
+def query_vector_store(query: str, k: int = 3) -> str:
+    """Search the vector store for relevant document chunks."""
+    vector_store = get_vector_store()
+    if not vector_store:
+        return "Vector store not initialized. No documentation found."
+        
+    results = vector_store.similarity_search(query, k=k)
+    
+    if not results:
+        return "No relevant information found in documentation."
+    
+    return "\n---\n".join([r.page_content for r in results])
+
+def query_pdf(query: str, chunks: List[str]) -> str:
+    """Backward compatible stub."""
+    return query_vector_store(query)

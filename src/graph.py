@@ -86,6 +86,14 @@ def report_writer(state: AgentState) -> dict:
     return state
 
 # --- Graph Definition ---
+from langgraph.checkpoint.sqlite import SqliteSaver
+import sqlite3
+
+# Use a persistent SQLite DB for checkpointer
+# In a real app, this would be a file path like 'checkpoints.db'
+conn = sqlite3.connect("checkpoints.db", check_same_thread=False)
+memory = SqliteSaver(conn)
+
 workflow = StateGraph(AgentState)
 
 # Add nodes
@@ -124,7 +132,6 @@ workflow.add_conditional_edges(
 )
 
 # Note: Fan-out normally requires multiple edges from the same node.
-# Since LangGraph 0.2 handles parallel starts, we add the others manually
 workflow.add_edge("evidence_aggregator", "defense")
 workflow.add_edge("evidence_aggregator", "tech_lead")
 
@@ -137,14 +144,22 @@ workflow.add_edge("tech_lead", "chief_justice")
 workflow.add_edge("chief_justice", "report_writer")
 workflow.add_edge("report_writer", END)
 
-# Compile
-app = workflow.compile()
+# Compile with checkpointer
+app = workflow.compile(checkpointer=memory)
 
 if __name__ == "__main__":
     import asyncio
+    from src.tools.doc_tools import clear_vector_store
     
     async def run_audit():
         print("Starting Automaton Auditor...")
+        
+        # Optional: Clear previous vector data for a fresh run demo
+        clear_vector_store()
+        
+        # config for checkpointer
+        config = {"configurable": {"thread_id": "audit_001"}}
+        
         initial_state = {
             "repo_url": "https://github.com/Natnael-Alemseged/Github-Evaluator",
             "repo_path": None,
@@ -154,9 +169,9 @@ if __name__ == "__main__":
             "final_report": None
         }
         
-        # Note: Use 'uv run python src/graph.py' to avoid ModuleNotFoundError
         try:
-            result = app.invoke(initial_state)
+            # Pass config to invoke for checkpointing
+            result = app.invoke(initial_state, config=config)
             print("\n--- Audit Complete ---")
             if result.get("final_report"):
                 print(f"Overall Score: {result['final_report'].overall_score:.2f}")

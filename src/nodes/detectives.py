@@ -74,17 +74,28 @@ def repo_investigator(state: AgentState) -> dict:
     return {"evidences": {"repo_investigator": evidences}}
 
 def doc_analyst(state: AgentState) -> dict:
-    """Node: Analyzes documentation and PDFs."""
+    """Node: Analyzes documentation and PDFs using RAG."""
     print("--- Detective: DocAnalyst ---")
-    # TODO: Wire to doc_tools once Docling is integrated
+    from src.tools.doc_tools import ingest_pdf, query_vector_store
+    
+    # 1. Ingest standard documents (In a real app, this would be triggered once)
+    # Using a fake path for demonstration
+    try:
+        ingest_pdf("standard.pdf")
+    except Exception as e:
+        print(f"DocAnalyst ingestion warning: {e}")
+    
+    # 2. Query for specific evidence
+    query = "What is the requirement for dependency management and graph architecture?"
+    finding_content = query_vector_store(query)
     
     evidences = [Evidence(
         detective_name="DocAnalyst",
-        goal="Check for setup instructions",
+        goal="Check for architecture and dependency compliance in documentation",
         found=True,
-        content="README.md contains 'uv sync' instructions.",
-        location="README.md",
-        rationale="Read top-level documentation for setup clarity.",
+        content=finding_content,
+        location="standard.pdf (Vector Search)",
+        rationale="Queried the document vector store for specific project constraints.",
         confidence=0.9
     )]
     return {"evidences": {"doc_analyst": evidences}}
