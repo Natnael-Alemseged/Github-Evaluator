@@ -73,12 +73,21 @@ def analyze_graph_structure(file_path: str) -> str:
                 # Check for StateGraph(...) calls
                 if (isinstance(node.func, ast.Name) and node.func.id == 'StateGraph') or \
                    (isinstance(node.func, ast.Attribute) and node.func.attr == 'StateGraph'):
-                    findings.append("Found StateGraph definition")
+                    findings.append("StateGraph instantiation found")
                 
-                # Check for .add_edge or .add_node
-                if isinstance(node.func, ast.Attribute) and node.func.attr in ['add_edge', 'add_node']:
-                    findings.append(f"Found {node.func.attr} call")
+                # Check for .add_edge or .add_node and extract args if possible
+                if isinstance(node.func, ast.Attribute) and node.func.attr in ['add_edge', 'add_node', 'add_conditional_edges']:
+                    if hasattr(ast, 'unparse'):
+                        args = [ast.unparse(arg) for arg in node.args]
+                        findings.append(f"Graph method {node.func.attr} called with args: {', '.join(args)}")
+                    else:
+                        findings.append(f"Found {node.func.attr} call")
+            
+            # Check for TypedDict reducers like Annotated[..., operator.add]
+            if isinstance(node, ast.Subscript) and getattr(node.value, 'id', '') == 'Annotated':
+                if hasattr(ast, 'unparse'):
+                    findings.append(f"Found Annotated reducer usage: {ast.unparse(node)}")
                     
-        return f"AST Analysis: {', '.join(set(findings)) if findings else 'No graph structures found'}"
+        return f"Deep AST Analysis: {'; '.join(set(findings)) if findings else 'No graph structures found'}"
     except Exception as e:
         return f"AST parsing failed: {e}"

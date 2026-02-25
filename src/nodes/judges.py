@@ -115,28 +115,34 @@ def chief_justice(state: AgentState) -> dict:
         t_score = next((op.score for op in relevant_ops if op.judge == "TechLead"), 3)
         
         # 2. TechLead Weighting (Primary score when variance is low, tie-breaker when high)
-        # We implementation a weighted base: TechLead counts double
         computed_score = (p_score + d_score + (2 * t_score)) / 4.0
         
-        # 3. Rule: Security Cap
-        # If any judge (especially Prosecutor/TechLead) gives <= 2 on a security item, cap at 3
+        # 3. Rule: Security Cap & Prosecutor Veto
         is_security = details.get("security", False)
-        if is_security and (p_score <= 2 or t_score <= 2):
-            computed_score = min(computed_score, 3.0)
+        prosecutor_veto = (p_score <= 1)
+        dissent = ""
+        
+        if is_security and prosecutor_veto:
+            computed_score = 1.0
+            dissent += "PROSECUTOR VETO APPLIED: Critical security flaw identified. "
+        elif is_security and (p_score <= 2 or t_score <= 2):
+            computed_score = min(computed_score, 2.0)
+            dissent += "Security Cap applied due to severe flags. "
             
         # 4. Rule: Evidence Overrule
-        # If an opinion cites evidence that doesn't exist, it is ignored (not applicable here as we handle IDs)
-        # But we can check if cited_evidence is empty for a "pass" result
         if t_score > 4 and len(next((op.cited_evidence for op in relevant_ops if op.judge == "TechLead"), [])) == 0:
             computed_score = min(computed_score, 3.5) # Penalty for high score without cited evidence
 
         # 5. Dissent check (variance > 2)
         all_scores = [p_score, d_score, t_score]
         score_range = max(all_scores) - min(all_scores)
-        dissent = f"Major Variance ({score_range}) detected." if score_range >= 2 else "Consensus reached."
-        if score_range >= 3:
-            dissent += " Tech Lead score prioritized as tie-breaker."
-            computed_score = t_score # Forced tie-break to TechLead
+        if score_range >= 2:
+            dissent += f"Major Variance ({score_range}) detected. "
+            if score_range >= 3 and not (is_security and prosecutor_veto):
+                dissent += "Tech Lead score prioritized as tie-breaker."
+                computed_score = t_score # Forced tie-break to TechLead
+        elif not dissent:
+            dissent = "Consensus reached."
 
         results.append(CriterionResult(
             dimension_id=criterion_id,
@@ -155,6 +161,19 @@ def chief_justice(state: AgentState) -> dict:
         
     # Calculate weighted overall score
     overall_score = sum(weighted_scores) / sum(criterion_weights) if criterion_weights else 0
+    
+    # Global cap if any security item critically failed
+    if any(r.final_score <= 1.0 and r.dimension_id == "safe_tool_engineering" for r in results):
+        overall_score = min(overall_score, 2.0)
+        results.append(CriterionResult(
+            dimension_id="global_security_veto",
+            dimension_name="Global Security Veto",
+            final_score=1.0,
+            verdict="Fail",
+            judge_opinions=[],
+            dissent_summary="Overall score capped at 2.0 due to critical security failure.",
+            remediation="Address the Prosecutor's security veto immediately."
+        ))
     
     final_report = AuditReport(
         repo_url=state["repo_url"],
