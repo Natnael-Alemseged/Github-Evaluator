@@ -28,33 +28,32 @@ def evidence_aggregator(state: AgentState) -> dict:
     verified = set()
     hallucinated = set()
     
-    # Simple regex to find words with dots or slashes like src/main.py
-    path_pattern = re.compile(r'[\w\-\./]+\.\w+')
-    repo_files = set(state.get("verified_paths", []))
+    # More robust regex for paths with specific extensions to avoid catching version numbers
+    path_pattern = re.compile(r'\b[\w\-\./]+\.(?:py|md|json|pdf|png|toml|yaml|txt|js|ts|yml|env\.example|sh|lock)\b')
+    repo_files = set(state.get("repo_manifest", []))
     
     # Always allow some stubs for the interim
     repo_files.update(['standard.pdf', 'architecture.png'])
     
     for ev_list in state.get("evidences", {}).values():
         for ev in ev_list:
-            # Check the location and content for things that look like paths
-            potential_paths = path_pattern.findall(ev.location) + path_pattern.findall(ev.content)
+            # Guard against None content (Evidence.content is Optional[str])
+            content_text = ev.content or ""
+            potential_paths = path_pattern.findall(ev.location) + path_pattern.findall(content_text)
             for p in potential_paths:
-                # Basic filter for files
-                if any(p.endswith(ext) for ext in ['.py', '.md', '.json', '.pdf', '.png', '.toml', '.yaml', '.txt']):
-                    clean_p = p.lstrip('./').lstrip('/')
+                clean_p = p.lstrip('./').lstrip('/')
                     
-                    # Exact match or suffix match (e.g. src/graph.py matches graph.py if it's unique)
-                    is_verified = False
-                    for rf in repo_files:
-                        if clean_p == rf or clean_p.endswith('/' + rf) or rf.endswith('/' + clean_p):
-                            verified.add(rf)
-                            is_verified = True
-                            break
-                    
-                    if not is_verified:
-                        # Only add if it's not a known allowed stub and not a false positive
-                        hallucinated.add(clean_p)
+                # Exact match or suffix match (e.g. src/graph.py matches graph.py if it's unique)
+                is_verified = False
+                for rf in repo_files:
+                    if clean_p == rf or clean_p.endswith('/' + rf) or rf.endswith('/' + clean_p):
+                        verified.add(rf)
+                        is_verified = True
+                        break
+                
+                if not is_verified:
+                    # Only add if it's not a known allowed stub and not a false positive
+                    hallucinated.add(clean_p)
                         
     return {
         "verified_paths": list(verified),
@@ -62,8 +61,8 @@ def evidence_aggregator(state: AgentState) -> dict:
     }
 
 def judges_entry(state: AgentState) -> dict:
-    """No-op fan-out hub: ensures conditional only routes to judges when continuing."""
-    return state
+    """No-op fan-out hub: pass-through to allow conditional routing to judges."""
+    return {}
 
 def evidence_router(state: AgentState) -> str:
     """Conditional Edge: Route to Judgement or skip if no evidence found."""
@@ -97,26 +96,40 @@ def report_writer(state: AgentState) -> dict:
         return state
     
     md_content = f"""# Audit Report: {report.repo_name}
-    
+
 ## Executive Summary
 {report.executive_summary}
 
 ## Evidence Integrity
-- **Verified Paths:** {', '.join(set(report.verified_paths)) if report.verified_paths else 'None'}
-- **Hallucinated Paths:** {', '.join(set(report.hallucinated_paths)) if report.hallucinated_paths else 'None'}
+- **Repo Manifest:** {len(state.get('repo_manifest', []))} files scanned from the repository.
+- **Verified Paths (cited in evidence):** {', '.join(sorted(set(report.verified_paths))) if report.verified_paths else 'None'}
+- **Hallucinated Paths (cited but not in repo):** {', '.join(sorted(set(report.hallucinated_paths))) if report.hallucinated_paths else 'None ✅'}
 
 ## Overall Score: {report.overall_score:.2f} / 5.0
 
-## Detailed Criteria Results
+## Score Summary
+
+| Dimension | Prosecutor | Defense | TechLead | Final | Verdict |
+|-----------|:----------:|:-------:|:--------:|:-----:|:-------:|
 """
+    for res in report.criteria:
+        p_score = next((op.score for op in res.judge_opinions if op.judge == "Prosecutor"), "—")
+        d_score = next((op.score for op in res.judge_opinions if op.judge == "Defense"), "—")
+        t_score = next((op.score for op in res.judge_opinions if op.judge == "TechLead"), "—")
+        md_content += f"| {res.dimension_name} | {p_score} | {d_score} | {t_score} | **{res.final_score:.2f}** | {res.verdict} |\n"
+
+    md_content += "\n## Dimension Details\n"
     for res in report.criteria:
         md_content += f"""
 ### {res.dimension_name}
-- **Score:** {res.final_score:.2f}
+- **Final Score:** {res.final_score:.2f} / 5.0
 - **Verdict:** {res.verdict}
-- **Dissent:** {res.dissent_summary if res.dissent_summary else "Consensus reached."}
+- **Dissent / Notes:** {res.dissent_summary if res.dissent_summary else "Consensus reached."}
 - **Remediation:** {res.remediation if res.remediation else "No issues found."}
 """
+        for op in res.judge_opinions:
+            snippet = op.argument[:300] + ('\u2026' if len(op.argument) > 300 else '')
+            md_content += f"  - **{op.judge}** (score {op.score}): {snippet}\n"
     
     md_content += "\n## Remediation Plan\n"
     md_content += report.remediation_plan + "\n"
@@ -217,6 +230,7 @@ if __name__ == "__main__":
             "opinions": [],
             "verified_paths": [],
             "hallucinated_paths": [],
+            "repo_manifest": [],
             "final_report": None
         }
         
