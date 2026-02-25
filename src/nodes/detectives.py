@@ -4,7 +4,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
 from src.state import AgentState, Evidence
-from src.tools.repo_tools import RepoSandbox, extract_git_history, analyze_graph_structure, analyze_security_features
+from src.tools.repo_tools import RepoSandbox, extract_git_history, analyze_graph_structure, analyze_security_features, analyze_git_progression
 # from src.tools.doc_tools import ingest_pdf, query_pdf # Placeholder for Docling
 
 # --- Setup LLM Fallback ---
@@ -40,6 +40,21 @@ def repo_investigator(state: AgentState) -> dict:
             # In a real app, we'd scan for any file containing StateGraph
             graph_file = os.path.join(repo_path, "src/graph.py")
             graph_analysis = analyze_graph_structure(graph_file) if os.path.exists(graph_file) else "src/graph.py not found"
+            
+            # Analyze Git progression explicitly
+            git_progression_analysis = analyze_git_progression(history)
+            
+            # Emit raw progression evidence
+            prog_ev = Evidence(
+                detective_name="RepoInvestigator",
+                goal="Verify atomic commit history (setup -> tools -> graph) and commit message quality",
+                found=True if "Identified sequential" in git_progression_analysis or ">3 commits" in git_progression_analysis else False,
+                content=f"Full History Analysis:\n{history[:1500]}\n\n{git_progression_analysis}",
+                location="git log --oneline --reverse",
+                rationale="Deterministic check against expected commit milestones and atomic structure.",
+                confidence=1.0
+            )
+            evidences.append(prog_ev)
             
             # Look for safe tool engineering
             security_analysis = analyze_security_features(repo_path)
