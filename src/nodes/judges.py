@@ -119,7 +119,8 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
                 criterion_id=criterion_id,
                 argument=f"Automated consensus reached due to technical constraints. Evidence supports: {details.get('success_pattern', 'compliance')}",
                 cited_evidence=[],
-                score=4 # Default to high score if technical failure so we don't drop to 3.0 stubs
+                score=4,  # Default to 4 when LLM unavailable: pass but not full marks (5 = full judicial review)
+                is_automated_fallback=True,
             ))
         # else: real opinion already appended in try block
     return opinions
@@ -248,6 +249,17 @@ def chief_justice(state: AgentState) -> dict:
     ]
     if failed:
         summary_lines.append(f"Critical Failures: {', '.join(r.dimension_name for r in failed)}")
+    # Clarify why score can be 4/5 when remediation says "nothing to improve"
+    all_opinions = state.get("opinions", [])
+    all_fallback = (
+        len(all_opinions) > 0
+        and all(getattr(op, "is_automated_fallback", False) for op in all_opinions)
+    )
+    if all_fallback:
+        summary_lines.append(
+            "Note: All scores from automated fallback (LLM evaluation unavailable). "
+            "4/5 indicates a pass without full judicial review; run with working LLM APIs for 1–5 scoring."
+        )
     if hallucinated_paths:
         summary_lines.append(f"Hallucinated Paths Detected: {len(hallucinated_paths)} — paths referenced in LLM opinions that do not exist in the repo.")
     else:

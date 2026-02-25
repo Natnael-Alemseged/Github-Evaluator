@@ -21,6 +21,7 @@ class JudicialOpinion(BaseModel):
     argument: str = Field(description="Detailed reasoning based strictly on cited evidence")
     cited_evidence: List[str] = Field(description="List of evidence IDs or findings used in the argument")
     score: int = Field(ge=1, le=5, description="Score 1-5")
+    is_automated_fallback: bool = Field(default=False, description="True when LLM failed and a stub opinion was used")
 
 class CriterionResult(BaseModel):
     """Final determination for a single grading rubric line item."""
