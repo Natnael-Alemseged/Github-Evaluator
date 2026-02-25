@@ -23,15 +23,28 @@ def load_rubric(state: AgentState) -> dict:
 def evidence_aggregator(state: AgentState) -> dict:
     """Node: Aggregates evidence and prepares for judicial evaluation."""
     print("--- Aggregator: EvidenceAggregator ---")
-    # This node primarily acts as a fan-in point before the judge fan-out
     return state
+
+def evidence_router(state: AgentState) -> str:
+    """Conditional Edge: Route to Judgement or skip if no evidence found."""
+    all_ev = state.get("evidences", {})
+    # Flatten all evidence lists
+    total_findings = sum(len(ev_list) for ev_list in all_ev.values())
+    
+    # If no real findings (excluding placeholders with 0 confidence or specifically marked)
+    # For this interim, we check if total_findings > 0
+    if total_findings == 0:
+        print("!!! No evidence detected. Routing to final report writer directly.")
+        return "skip_to_report"
+    
+    return "continue_to_judges"
 
 def report_writer(state: AgentState) -> dict:
     """Node: Writes the final report to a Markdown file."""
     print("--- Reporter: MarkdownWriter ---")
     report = state.get("final_report")
     if not report:
-        print("No report to write.")
+        print("No report to write. Possible failure in synthesis.")
         return state
         
     report_path = "reports/audit_report.md"
@@ -52,12 +65,16 @@ def report_writer(state: AgentState) -> dict:
 - **Score:** {res.final_score:.2f}
 - **Verdict:** {res.verdict}
 - **Dissent:** {res.dissent_summary}
-- **Justification:** {res.remediation if res.remediation else "No issues found."}
+- **Remediation:** {res.remediation if res.remediation else "No issues found."}
 """
     
     md_content += "\n## Remediation Plan\n"
-    for item in report.remediation_plan:
-        md_content += f"- {item}\n"
+    if report.remediation_plan:
+        for item in report.remediation_plan:
+            if item:
+                md_content += f"- {item}\n"
+    else:
+        md_content += "- No remediation needed at this time.\n"
         
     try:
         with open(report_path, "w") as f:
@@ -96,8 +113,18 @@ workflow.add_edge("repo_investigator", "evidence_aggregator")
 workflow.add_edge("doc_analyst", "evidence_aggregator")
 workflow.add_edge("vision_inspector", "evidence_aggregator")
 
-# Fan-out to Judges
-workflow.add_edge("evidence_aggregator", "prosecutor")
+# Conditional Routing after Aggregator
+workflow.add_conditional_edges(
+    "evidence_aggregator",
+    evidence_router,
+    {
+        "continue_to_judges": "prosecutor", # Start of judge fan-out
+        "skip_to_report": "report_writer"
+    }
+)
+
+# Note: Fan-out normally requires multiple edges from the same node.
+# Since LangGraph 0.2 handles parallel starts, we add the others manually
 workflow.add_edge("evidence_aggregator", "defense")
 workflow.add_edge("evidence_aggregator", "tech_lead")
 
@@ -120,17 +147,21 @@ if __name__ == "__main__":
         print("Starting Automaton Auditor...")
         initial_state = {
             "repo_url": "https://github.com/Natnael-Alemseged/Github-Evaluator",
+            "repo_path": None,
             "rubric": {},
             "evidences": {},
             "opinions": [],
             "final_report": None
         }
         
-        # Using invoke for simplicity in CLI
-        result = app.invoke(initial_state)
-        
-        print("\n--- Audit Complete ---")
-        if result.get("final_report"):
-            print(f"Overall Score: {result['final_report'].overall_score:.2f}")
+        # Note: Use 'uv run python src/graph.py' to avoid ModuleNotFoundError
+        try:
+            result = app.invoke(initial_state)
+            print("\n--- Audit Complete ---")
+            if result.get("final_report"):
+                print(f"Overall Score: {result['final_report'].overall_score:.2f}")
+        except Exception as e:
+            print(f"Execution failed: {e}")
+            print("\nTIP: If you see ModuleNotFoundError, ensure you are running with 'uv run python ...' or have activated the .venv.")
     
     asyncio.run(run_audit())
