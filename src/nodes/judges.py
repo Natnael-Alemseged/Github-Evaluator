@@ -9,7 +9,7 @@ from src.state import AgentState, JudicialOpinion, Evidence, CriterionResult, Au
 # --- Setup LLM ---
 try:
     if "GROQ_API_KEY" in os.environ:
-        llm = ChatGroq(model="llama3-70b-8192", temperature=0)
+        llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
     elif "GOOGLE_API_KEY" in os.environ:
         llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0)
     else:
