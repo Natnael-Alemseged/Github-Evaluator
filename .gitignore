@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment variables
+.env
+.env.local
+
+# IDEs and Editors
+.cursor/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+reports/
+!reports/.gitkeep
