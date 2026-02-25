@@ -1,22 +1,37 @@
 {
-  "criteria": {
-    "git_hygiene": {
+  "dimensions": [
+    {
+      "id": "git_hygiene",
       "name": "Git Hygiene & History",
-      "description": "Quality of commit messages, frequency, and logical progression.",
       "weight": 1.0,
-      "security": false
+      "security": false,
+      "target_artifact": "git history / log",
+      "forensic_instruction": "Extract git log with --oneline --reverse. Analyze commit atomicity and setup -> tools -> graph progression.",
+      "success_pattern": "Multiple commits with logical progression and clear, atomic changes.",
+      "failure_pattern": "Single 'init' or 'chore' commit with bulky changes. No logical setup-to-completion milestones.",
+      "synthesis_rules": "TechLead weights heaviest for production-grade history. Penalize if messages are non-descriptive."
     },
-    "graph_orchestration": {
+    {
+      "id": "graph_orchestration",
       "name": "Graph Orchestration",
-      "description": "Correct usage of LangGraph, parallel nodes, and state management.",
-      "weight": 1.0,
-      "security": false
-    },
-    "safe_tool_engineering": {
-      "name": "Safe Tool Engineering",
-      "description": "Proper sandboxing, error handling, and security in tool implementation.",
       "weight": 2.0,
-      "security": true
+      "security": false,
+      "target_artifact": "src/graph.py",
+      "forensic_instruction": "Analyze AST for StateGraph usage. Verify fan-out (detectives/judges) and fan-in (aggregator/justice). Check for reducers.",
+      "success_pattern": "Parallel branches found for detectives and judges. Proper fan-in to aggregator and chief justice nodes. operator.add/ior used.",
+      "failure_pattern": "Linear node execution. State overwriting due to missing reducers. Incorrect fan-out/fan-in wiring.",
+      "synthesis_rules": "Strict adherence to parallel patterns required for score > 3."
+    },
+    {
+      "id": "safe_tool_engineering",
+      "name": "Safe Tool Engineering",
+      "weight": 2.0,
+      "security": true,
+      "target_artifact": "src/tools/repo_tools.py",
+      "forensic_instruction": "Scan for sandboxing (tempfile), URL sanitization (is_safe_url), and safe execution (subprocess.run without shell=True).",
+      "success_pattern": "Isolated temp directories used for git ops. URLs validated before cloning. All external calls sandboxed.",
+      "failure_pattern": "Raw os.system or shell=True used. No URL validation. Writing to permanent local directories.",
+      "synthesis_rules": "Prosecutor Veto: If score is 1, overall audit cap at 2.0."
     }
-  }
+  ]
 }

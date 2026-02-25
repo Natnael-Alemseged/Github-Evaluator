@@ -109,22 +109,17 @@ def report_writer(state: AgentState) -> dict:
 
 ## Detailed Criteria Results
 """
-    for res in report.criteria_results:
+    for res in report.criteria:
         md_content += f"""
 ### {res.dimension_name}
 - **Score:** {res.final_score:.2f}
 - **Verdict:** {res.verdict}
-- **Dissent:** {res.dissent_summary}
+- **Dissent:** {res.dissent_summary if res.dissent_summary else "Consensus reached."}
 - **Remediation:** {res.remediation if res.remediation else "No issues found."}
 """
     
     md_content += "\n## Remediation Plan\n"
-    if report.remediation_plan:
-        for item in report.remediation_plan:
-            if item:
-                md_content += f"- {item}\n"
-    else:
-        md_content += "- No remediation needed at this time.\n"
+    md_content += report.remediation_plan + "\n"
         
     try:
         with open(report_path, "w") as f:

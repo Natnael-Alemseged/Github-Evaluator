@@ -9,7 +9,7 @@ class Evidence(BaseModel):
     detective_name: str = Field(description="Name of the detective (e.g., RepoInvestigator)")
     goal: str = Field(description="What the detective was looking for")
     found: bool = Field(description="Whether the target of the investigation was found")
-    content: str = Field(description="The actual content or data discovered")
+    content: Optional[str] = Field(None, description="The actual content or data discovered")
     location: str = Field(description="Where this was found (file path, line number, doc section)")
     rationale: str = Field(description="Why this is relevant to the objective")
     confidence: float = Field(ge=0.0, le=1.0, description="Confidence score")
@@ -29,8 +29,8 @@ class CriterionResult(BaseModel):
     final_score: float = Field(description="Aggregated final score")
     verdict: str = Field(description="Pass/Fail or qualitative result")
     judge_opinions: List[JudicialOpinion] = Field(description="Opinions that led to this result")
-    dissent_summary: str = Field(description="Summary of any major disagreements between judges")
-    remediation: Optional[str] = Field(description="Suggested fix for failures")
+    dissent_summary: Optional[str] = Field(description="Summary of any major disagreements between judges")
+    remediation: str = Field(description="Suggested fix for failures")
 
 class AuditReport(BaseModel):
     """The final compiled report."""
@@ -38,8 +38,8 @@ class AuditReport(BaseModel):
     repo_name: str = Field(description="Name of the repository")
     overall_score: float = Field(description="Total weighted score")
     executive_summary: str = Field(description="High-level summary for stakeholders")
-    criteria_results: List[CriterionResult] = Field(description="List of detailed dimension results")
-    remediation_plan: List[str] = Field(description="Prioritized list of steps to improve the score")
+    criteria: List[CriterionResult] = Field(description="List of detailed dimension results")
+    remediation_plan: str = Field(description="Prioritized list of steps to improve the score")
     verified_paths: List[str] = Field(default_factory=list, description="Paths verified to exist in the repository")
     hallucinated_paths: List[str] = Field(default_factory=list, description="Paths hallucinated by LLMs or detectives")
 
