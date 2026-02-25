@@ -26,5 +26,5 @@ FDE Challenge Week 2 - The Automaton Auditor. This is a production-grade multi-a
 
 4. Run the auditor:
    ```bash
-   python src/graph.py
+   uv run python -m src.graph
    ```
