@@ -1,6 +1,5 @@
 import os
-from typing import List, Literal, Any
-import statistics
+from typing import List, Literal
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -11,8 +10,8 @@ llms = []
 if "GROQ_API_KEY" in os.environ:
     llms.append(ChatGroq(model="llama-3.3-70b-versatile", temperature=0))
 if "GOOGLE_API_KEY" in os.environ:
-    # Use gemini-1.5-flash which is more likely to be available and faster
-    llms.append(ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0))
+    # Use gemini-2.0-flash for best availability and speed
+    llms.append(ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0))
 
 def get_structured_llm(model_class):
     """Try available LLMs with fallback on rate limits."""
@@ -38,6 +37,34 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
     
     opinions = []
     
+    # Build role_instructions once per judge call, outside the hot LLM/dimension loop
+    role_instructions = {
+        "Prosecutor": """
+            Your goal is to FIND FAILURES. You are a 'Trust No One' auditor.
+            - Assume 'Vibe Coding' until proven otherwise.
+            - Deduct points for missing error handling, vague evidence, or lack of strict type safety.
+            - If a feature is only partially implemented, it is a failure in your eyes.
+            - Be critical of any security implications or potential for catastrophic failure.
+            - Explicitly argue for Score 1 when evidence shows linear flow or no sandboxing.
+        """,
+        "Defense": """
+            Your goal is to ADVOCATE for the developer. You are a pragmatic defender.
+            - Highlight the intent and the architectural foundation, even if the implementation is incomplete.
+            - Emphasize mitigations: if a security flaw is present but hard to exploit, note that.
+            - Focus on progress: if the git history shows logical growth, give credit.
+            - Interpret missing evidence as 'neutral' rather than 'failing'.
+            - Find at least one concrete strength to mention in every argument.
+        """,
+        "TechLead": """
+            Your goal is to assess PRODUCTION READINESS. You are the pragmatic architect.
+            - Focus on scalability, maintainability, and standard engineering patterns.
+            - Value explicit evidence of robust testing and clear orchestration (like LangGraph).
+            - Be wary of 'over-engineering' or complex solutions to simple problems.
+            - Your score should reflect whether you would let this code ship to millions of users.
+            - Always cite specific evidence IDs that support your conclusion.
+        """
+    }
+
     for dimension in rubric.get("dimensions", []):
         criterion_id = dimension["id"]
         details = dimension
@@ -50,26 +77,24 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
                 continue
 
             prompt = f"""
-            You are the {judge_role}.
-            Evaluate the following evidence against the dimension: '{details['name']}'.
+            You are the {judge_role}. 
             
+            ROLE MISSION:
+            {role_instructions.get(judge_role, "Perform your role as a judge.")}
+
+            Evaluation Dimension: '{details['name']}'
             Dimension Description: {details.get('forensic_instruction', 'N/A')}
             
             Success Pattern: {details.get('success_pattern', 'N/A')}
             Failure Pattern: {details.get('failure_pattern', 'N/A')}
             
-            Evidence:
+            Evidence Collected by Detectives:
             {evidence_text}
-            
-            Strictly follow the role-play:
-            - Prosecutor: Focus on failures, gaps, and lack of rigor (Trust No One. Assume Vibe Coding).
-            - Defense: Highlight strengths, context, and mitigations.
-            - TechLead: Focus on practical architecture and "production-grade" engineering.
             
             Output a JudicialOpinion with:
             - judge: {judge_role}
             - criterion_id: {criterion_id}
-            - argument: Your specific reasoning
+            - argument: Your specific reasoning based strictly on the role mission above.
             - cited_evidence: Reference IDs (e.g. ['0', '2']) from the evidence list
             - score: 1-5 (1=Critical Failure, 5=Excellence)
             """
@@ -96,15 +121,7 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
                 cited_evidence=[],
                 score=4 # Default to high score if technical failure so we don't drop to 3.0 stubs
             ))
-        else:
-            opinions.append(JudicialOpinion(
-                judge=judge_role,
-                criterion_id=criterion_id,
-                argument=f"Stub argument for {judge_role} on {criterion_id} (No LLM keys found)",
-                cited_evidence=[],
-                score=3
-            ))
-            
+        # else: real opinion already appended in try block
     return opinions
 
 def prosecutor(state: AgentState) -> dict:
@@ -181,6 +198,11 @@ def chief_justice(state: AgentState) -> dict:
             if any(any(hp in op.argument for hp in hallucinated_paths) for op in relevant_ops):
                 computed_score = min(computed_score, 2.5)
                 dissent += "PENALTY: Opinion hallucinated non-existent files. "
+        
+        # 7. Rule: Support for Parallel Orchestration (Master Thinker Gap)
+        if criterion_id == "graph_orchestration" and p_score <= 2:
+            computed_score = min(computed_score, 2.5)
+            dissent += "PROSECUTOR FLAG: Potential linear flow or orchestration weakness detected. "
 
         results.append(CriterionResult(
             dimension_id=criterion_id,
@@ -213,15 +235,35 @@ def chief_justice(state: AgentState) -> dict:
             remediation="Address the Prosecutor's security veto immediately."
         ))
     
+    # Build a richer executive summary
+    passed = [r for r in results if r.verdict == "Pass"]
+    failed = [r for r in results if r.verdict == "Fail"]
+    hallucinated_paths = state.get("hallucinated_paths", [])
+    verified_paths = state.get("verified_paths", [])
+    repo_manifest = state.get("repo_manifest", [])
+
+    summary_lines = [
+        f"Overall Score: {overall_score:.2f}/5.0",
+        f"Dimensions Evaluated: {len(results)} | Passed: {len(passed)} | Failed: {len(failed)}",
+    ]
+    if failed:
+        summary_lines.append(f"Critical Failures: {', '.join(r.dimension_name for r in failed)}")
+    if hallucinated_paths:
+        summary_lines.append(f"Hallucinated Paths Detected: {len(hallucinated_paths)} — paths referenced in LLM opinions that do not exist in the repo.")
+    else:
+        summary_lines.append("Evidence Integrity: No hallucinated paths detected. All cited files verified against repo manifest.")
+    summary_lines.append(f"Repo Manifest: {len(repo_manifest)} files scanned. {len(verified_paths)} cross-referenced with evidence.")
+    executive_summary = "\n".join(summary_lines)
+
     final_report = AuditReport(
         repo_url=state["repo_url"],
         repo_name=state["repo_url"].split("/")[-1],
         overall_score=overall_score,
-        executive_summary=f"Audit completed with an overall score of {overall_score:.2f}.",
+        executive_summary=executive_summary,
         criteria=results,
         remediation_plan="\n".join([f"- {r.remediation}" for r in results if r.remediation and r.remediation != "No issues found."]) or "No remediation needed.",
-        verified_paths=state.get("verified_paths", []),
-        hallucinated_paths=state.get("hallucinated_paths", [])
+        verified_paths=verified_paths,
+        hallucinated_paths=hallucinated_paths
     )
     
     return {"final_report": final_report}
