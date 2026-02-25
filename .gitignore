@@ -28,3 +28,7 @@ reports/
 checkpoints.db*
 faiss_index/
 .agents/
+
+
+
+REPO_QA_CRITIQUE.md
