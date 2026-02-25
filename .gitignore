@@ -23,3 +23,8 @@ env/
 # Project specific
 reports/
 !reports/.gitkeep
+
+# Local databases and indexes
+checkpoints.db*
+faiss_index/
+.agents/

@@ -15,8 +15,7 @@ def read_state():
             
     print("\n--- OPINIONS ---")
     for op in state.get("opinions", []):
-        if op.criterion_id == "safe_tool_engineering":
-            print(f"Judge: {op.judge} - Score: {op.score} - Argument: {op.argument}")
+        print(f"Criterion: {op.criterion_id} - Judge: {op.judge} - Score: {op.score} - Argument: {op.argument}")
 
 if __name__ == "__main__":
     read_state()
