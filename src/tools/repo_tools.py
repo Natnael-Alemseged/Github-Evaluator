@@ -42,7 +42,7 @@ class RepoSandbox:
         try:
             # Clone with 1 depth for efficiency in forensic audit
             result = subprocess.run(
-                ["git", "clone", "--depth", "1", self.repo_url, "."],
+                ["git", "clone", self.repo_url, "."],
                 cwd=self.temp_dir,
                 capture_output=True,
                 text=True,
