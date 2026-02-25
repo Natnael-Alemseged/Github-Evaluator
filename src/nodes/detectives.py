@@ -12,16 +12,8 @@ llms = []
 if "GROQ_API_KEY" in os.environ:
     llms.append(ChatGroq(model="llama-3.3-70b-versatile", temperature=0))
 if "GOOGLE_API_KEY" in os.environ:
-    llms.append(ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0))
+    llms.append(ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0))
 
-def get_structured_llm(model_class):
-    """Try available LLMs with fallback on rate limits."""
-    for model in llms:
-        try:
-            return model.with_structured_output(model_class)
-        except Exception:
-            continue
-    return None
 
 def repo_investigator(state: AgentState) -> dict:
     """Node: Investigates the repository structure and code."""
@@ -126,7 +118,7 @@ def repo_investigator(state: AgentState) -> dict:
     
     return {
         "evidences": {"repo_investigator": evidences},
-        "verified_paths": all_files,
+        "repo_manifest": all_files,
         "hallucinated_paths": []
     }
 
