@@ -29,20 +29,21 @@ def repo_investigator(state: AgentState) -> dict:
     print("--- Detective: RepoInvestigator ---")
     repo_url = state["repo_url"]
     
-    # Real tool usage
     evidences = []
     try:
+        # Use existing repo_path if available (e.g., from a previous run or setup)
+        # but usually we want a fresh sandbox per run
         with RepoSandbox(repo_url) as repo_path:
-            # 1. Analyze Git History
             history = extract_git_history(repo_path)
             
-            # 2. Analyze specific files (e.g., src/graph.py if it exists)
-            # This is a bit of a placeholder - in a real scenario, we'd list files first
-            graph_analysis = analyze_graph_structure(os.path.join(repo_path, "src/graph.py")) if os.path.exists(os.path.join(repo_path, "src/graph.py")) else "src/graph.py not found"
+            # Look for graph.py specifically
+            # In a real app, we'd scan for any file containing StateGraph
+            graph_file = os.path.join(repo_path, "src/graph.py")
+            graph_analysis = analyze_graph_structure(graph_file) if os.path.exists(graph_file) else "src/graph.py not found"
             
             structured_ev = get_structured_llm(Evidence)
             if structured_ev:
-                prompt = f"Analyze the following repository data:\nHistory: {history[:500]}\nGraph Analysis: {graph_analysis}"
+                prompt = f"Analyze the following repository data:\nHistory: {history[:1000]}\nGraph Analysis: {graph_analysis}"
                 evidence = structured_ev.invoke([
                     SystemMessage(content="You are a forensic detective. Output only objective evidence without opinions."),
                     HumanMessage(content=prompt)
@@ -75,7 +76,7 @@ def repo_investigator(state: AgentState) -> dict:
 def doc_analyst(state: AgentState) -> dict:
     """Node: Analyzes documentation and PDFs."""
     print("--- Detective: DocAnalyst ---")
-    # TODO: Implement real Docling integration
+    # TODO: Wire to doc_tools once Docling is integrated
     
     evidences = [Evidence(
         detective_name="DocAnalyst",
@@ -91,5 +92,14 @@ def doc_analyst(state: AgentState) -> dict:
 def vision_inspector(state: AgentState) -> dict:
     """Node: Stub for multimodal/UI analysis."""
     print("--- Detective: VisionInspector (Stub) ---")
-    # Multimodal not required for interim, providing a consistent stub
-    return {"evidences": {"vision_inspector": []}}
+    # Multimodal not required for interim. Returning a placeholder to avoid downstream empty list issues.
+    placeholder = Evidence(
+        detective_name="VisionInspector",
+        goal="Analyze architectural diagrams",
+        found=False,
+        content="Vision inspection skipped: Multimodal analysis not enabled in interim.",
+        location="N/A",
+        rationale="Detective is a stub for the interim phase.",
+        confidence=1.0
+    )
+    return {"evidences": {"vision_inspector": [placeholder]}}

@@ -16,4 +16,4 @@ def query_pdf(query: str, chunks: list[str]) -> str:
     # TODO: Vectorize chunks and perform similarity search
     print(f"Stub: Querying chunks for '{query}'")
     matches = [c for c in chunks if query.lower() in c.lower()]
-    return "\\n".join(matches) if matches else "No relevant information found."
+    return "\n".join(matches) if matches else "No relevant information found."
