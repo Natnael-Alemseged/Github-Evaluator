@@ -21,8 +21,12 @@ def load_rubric(state: AgentState) -> dict:
         return {"rubric": {"criteria": {}}}
 
 def evidence_aggregator(state: AgentState) -> dict:
-    """Node: Aggregates evidence and prepares for judicial evaluation."""
+    """Aggregates evidence and prepares for judicial evaluation."""
     print("--- Aggregator: EvidenceAggregator ---")
+    return state
+
+def judges_entry(state: AgentState) -> dict:
+    """No-op fan-out hub: ensures conditional only routes to judges when continuing."""
     return state
 
 def evidence_router(state: AgentState) -> str:
@@ -43,12 +47,18 @@ def report_writer(state: AgentState) -> dict:
     """Node: Writes the final report to a Markdown file."""
     print("--- Reporter: MarkdownWriter ---")
     report = state.get("final_report")
-    if not report:
-        print("No report to write. Possible failure in synthesis.")
-        return state
-        
     report_path = "reports/audit_report.md"
     os.makedirs("reports", exist_ok=True)
+    
+    if not report:
+        print("No report to write (e.g. audit skipped due to no evidence). Writing minimal report.")
+        try:
+            with open(report_path, "w") as f:
+                f.write("# Audit Report\n\nNo evidence was collected. Audit skipped. Check detective nodes or repo URL.\n")
+            print(f"Report written to {report_path}")
+        except Exception as e:
+            print(f"Failed to write report: {e}")
+        return state
     
     md_content = f"""# Audit Report: {report.repo_name}
     
@@ -102,6 +112,7 @@ workflow.add_node("repo_investigator", repo_investigator)
 workflow.add_node("doc_analyst", doc_analyst)
 workflow.add_node("vision_inspector", vision_inspector)
 workflow.add_node("evidence_aggregator", evidence_aggregator)
+workflow.add_node("judges_entry", judges_entry)
 workflow.add_node("prosecutor", prosecutor)
 workflow.add_node("defense", defense)
 workflow.add_node("tech_lead", tech_lead)
@@ -121,19 +132,20 @@ workflow.add_edge("repo_investigator", "evidence_aggregator")
 workflow.add_edge("doc_analyst", "evidence_aggregator")
 workflow.add_edge("vision_inspector", "evidence_aggregator")
 
-# Conditional Routing after Aggregator
+# Conditional Routing after Aggregator (only one path: judges OR report)
 workflow.add_conditional_edges(
     "evidence_aggregator",
     evidence_router,
     {
-        "continue_to_judges": "prosecutor", # Start of judge fan-out
+        "continue_to_judges": "judges_entry",
         "skip_to_report": "report_writer"
     }
 )
 
-# Note: Fan-out normally requires multiple edges from the same node.
-workflow.add_edge("evidence_aggregator", "defense")
-workflow.add_edge("evidence_aggregator", "tech_lead")
+# Fan-out from judges entry to all three judges (no unconditional edges from aggregator)
+workflow.add_edge("judges_entry", "prosecutor")
+workflow.add_edge("judges_entry", "defense")
+workflow.add_edge("judges_entry", "tech_lead")
 
 # Fan-in to Chief Justice
 workflow.add_edge("prosecutor", "chief_justice")
@@ -149,6 +161,7 @@ app = workflow.compile(checkpointer=memory)
 
 if __name__ == "__main__":
     import asyncio
+    import uuid
     from src.tools.doc_tools import clear_vector_store
     
     async def run_audit():
@@ -157,8 +170,9 @@ if __name__ == "__main__":
         # Optional: Clear previous vector data for a fresh run demo
         clear_vector_store()
         
-        # config for checkpointer
-        config = {"configurable": {"thread_id": "audit_001"}}
+        # Generate a fresh thread_id for every run so we don't accumulate old opinions
+        run_id = f"audit_{uuid.uuid4().hex[:8]}"
+        config = {"configurable": {"thread_id": run_id}}
         
         initial_state = {
             "repo_url": "https://github.com/Natnael-Alemseged/Github-Evaluator",

@@ -91,3 +91,38 @@ def analyze_graph_structure(file_path: str) -> str:
         return f"Deep AST Analysis: {'; '.join(set(findings)) if findings else 'No graph structures found'}"
     except Exception as e:
         return f"AST parsing failed: {e}"
+
+def analyze_security_features(repo_path: str) -> str:
+    """Analyze the repository for safe tool engineering practices."""
+    findings = []
+    
+    # Try to find repo_tools.py
+    tools_file = os.path.join(repo_path, "src/tools/repo_tools.py")
+        
+    if os.path.exists(tools_file):
+        try:
+            with open(tools_file, "r") as f:
+                content = f.read()
+                tree = ast.parse(content)
+                
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import) or isinstance(node, ast.ImportFrom):
+                    names = [n.name for n in node.names]
+                    if 'subprocess' in names or isinstance(node, ast.ImportFrom) and node.module == 'subprocess':
+                        findings.append("Uses 'subprocess' module")
+                    if 'tempfile' in names or isinstance(node, ast.ImportFrom) and node.module == 'tempfile':
+                        findings.append("Uses 'tempfile' for isolated sandboxing")
+                
+                if isinstance(node, ast.Call):
+                    if hasattr(node.func, 'attr') and node.func.attr == 'run':
+                        findings.append("Uses 'subprocess.run' for execution")
+                        
+            if 'is_safe_url' in content:
+                findings.append("Implements URL sanitization (is_safe_url)")
+                
+        except Exception as e:
+            findings.append(f"AST parsing of tools failed: {e}")
+    else:
+        findings.append("No repo_tools.py found for security analysis.")
+        
+    return f"Security Analysis: {'; '.join(set(findings)) if findings else 'No security features found'}"

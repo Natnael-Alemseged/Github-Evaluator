@@ -4,7 +4,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
 from src.state import AgentState, Evidence
-from src.tools.repo_tools import RepoSandbox, extract_git_history, analyze_graph_structure
+from src.tools.repo_tools import RepoSandbox, extract_git_history, analyze_graph_structure, analyze_security_features
 # from src.tools.doc_tools import ingest_pdf, query_pdf # Placeholder for Docling
 
 # --- Setup LLM Fallback ---
@@ -41,21 +41,38 @@ def repo_investigator(state: AgentState) -> dict:
             graph_file = os.path.join(repo_path, "src/graph.py")
             graph_analysis = analyze_graph_structure(graph_file) if os.path.exists(graph_file) else "src/graph.py not found"
             
+            # Look for safe tool engineering
+            security_analysis = analyze_security_features(repo_path)
+            
+            # Emit raw security evidence to bypass LLM summarization loss
+            security_ev = Evidence(
+                detective_name="RepoInvestigator",
+                goal="Scan for secure tool engineering (sandboxing, subprocesses)",
+                found=True if "Uses" in security_analysis else False,
+                content=security_analysis,
+                location="src/tools/repo_tools.py",
+                rationale="Deterministic AST scan for security imports and patterns.",
+                confidence=1.0
+            )
+            evidences.append(security_ev)
+            
             structured_ev = get_structured_llm(Evidence)
             if structured_ev:
-                prompt = f"Analyze the following repository data:\nHistory: {history[:1000]}\nGraph Analysis: {graph_analysis}"
+                prompt = f"Analyze the following repository data for general architecture and history:\nHistory: {history[:1000]}\nGraph Analysis: {graph_analysis}"
                 evidence = structured_ev.invoke([
                     SystemMessage(content="You are a forensic detective. Output only objective evidence without opinions."),
                     HumanMessage(content=prompt)
                 ])
+                # Ensure the detective name is consistent
+                evidence.detective_name = "RepoInvestigator"
                 evidences.append(evidence)
             else:
                 evidences.append(Evidence(
                     detective_name="RepoInvestigator",
                     goal="Verify repository history and structure",
                     found=True,
-                    content=f"History: {history[:100]}...",
-                    location="git log",
+                    content=f"History: {history[:100]}...\nGraph: {graph_analysis}",
+                    location="git log & AST",
                     rationale="Extracted git history to check for commit patterns",
                     confidence=1.0
                 ))
