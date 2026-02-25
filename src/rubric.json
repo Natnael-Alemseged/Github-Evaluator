@@ -1,0 +1,19 @@
+{
+  "criteria": {
+    "git_hygiene": {
+      "name": "Git Hygiene & History",
+      "description": "Quality of commit messages, frequency, and logical progression.",
+      "weight": 1.0
+    },
+    "graph_orchestration": {
+      "name": "Graph Orchestration",
+      "description": "Correct usage of LangGraph, parallel nodes, and state management.",
+      "weight": 1.0
+    },
+    "safe_tool_engineering": {
+      "name": "Safe Tool Engineering",
+      "description": "Proper sandboxing, error handling, and security in tool implementation.",
+      "weight": 1.5
+    }
+  }
+}
