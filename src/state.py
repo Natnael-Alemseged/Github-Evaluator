@@ -60,6 +60,7 @@ class AgentState(TypedDict):
     
     verified_paths: Annotated[List[str], operator.add]
     hallucinated_paths: Annotated[List[str], operator.add]
+    repo_manifest: List[str]
     
     # The final output
     final_report: Optional[AuditReport]
