@@ -42,3 +42,7 @@ The `Chief Justice` and `evidence_aggregator` nodes implement a layer of **Metac
 ### 3. Forensic Depth
 
 The system employs real programmatic extraction through `RepoInvestigator`, parsing deep into Python abstract syntax trees (`ast.walk`), strictly scanning Git history (`git log --oneline --reverse`), and ingesting technical requirements via FAISS vector DB queries, thereby grounding the LLM in undeniable, irrefutable data points.
+
+## Project Reports
+
+- [Interim Architecture Report](interim_report.md) (also available as PDF: `interim_report.pdf`)
