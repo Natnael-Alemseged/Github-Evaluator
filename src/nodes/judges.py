@@ -43,7 +43,7 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
             {evidence_text}
             
             Strictly follow the role-play:
-            - Prosecutor: Focus on failures, gaps, and lack of rigor.
+            - Prosecutor: Focus on failures, gaps, and lack of rigor (Trust No One. Assume Vibe Coding).
             - Defense: Highlight strengths, context, and mitigations.
             - TechLead: Focus on practical architecture and "production-grade" engineering.
             
@@ -139,10 +139,18 @@ def chief_justice(state: AgentState) -> dict:
         if score_range >= 2:
             dissent += f"Major Variance ({score_range}) detected. "
             if score_range >= 3 and not (is_security and prosecutor_veto):
-                dissent += "Tech Lead score prioritized as tie-breaker."
+                dissent += "Tech Lead score prioritized as tie-breaker. "
                 computed_score = t_score # Forced tie-break to TechLead
         elif not dissent:
-            dissent = "Consensus reached."
+            dissent = "Consensus reached. "
+            
+        # 6. Rule: Hallucination Penalty
+        hallucinated_paths = state.get("hallucinated_paths", [])
+        if hallucinated_paths:
+            # Check if any judge referenced a hallucinated path in their argument
+            if any(any(hp in op.argument for hp in hallucinated_paths) for op in relevant_ops):
+                computed_score = min(computed_score, 2.5)
+                dissent += "PENALTY: Opinion hallucinated non-existent files. "
 
         results.append(CriterionResult(
             dimension_id=criterion_id,
@@ -181,7 +189,9 @@ def chief_justice(state: AgentState) -> dict:
         overall_score=overall_score,
         executive_summary=f"Audit completed with an overall score of {overall_score:.2f}.",
         criteria_results=results,
-        remediation_plan=[r.remediation for r in results if r.remediation]
+        remediation_plan=[r.remediation for r in results if r.remediation],
+        verified_paths=state.get("verified_paths", []),
+        hallucinated_paths=state.get("hallucinated_paths", [])
     )
     
     return {"final_report": final_report}

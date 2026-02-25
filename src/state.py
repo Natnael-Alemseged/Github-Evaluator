@@ -40,6 +40,8 @@ class AuditReport(BaseModel):
     executive_summary: str = Field(description="High-level summary for stakeholders")
     criteria_results: List[CriterionResult] = Field(description="List of detailed dimension results")
     remediation_plan: List[str] = Field(description="Prioritized list of steps to improve the score")
+    verified_paths: List[str] = Field(default_factory=list, description="Paths verified to exist in the repository")
+    hallucinated_paths: List[str] = Field(default_factory=list, description="Paths hallucinated by LLMs or detectives")
 
 # --- AgentState (TypedDict) ---
 
@@ -55,6 +57,9 @@ class AgentState(TypedDict):
     
     # operator.add concatenates lists
     opinions: Annotated[List[JudicialOpinion], operator.add]
+    
+    verified_paths: Annotated[List[str], operator.add]
+    hallucinated_paths: Annotated[List[str], operator.add]
     
     # The final output
     final_report: Optional[AuditReport]

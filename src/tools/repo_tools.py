@@ -15,6 +15,18 @@ def is_safe_url(url: str) -> bool:
     except Exception:
         return False
 
+def get_all_repo_files(repo_path: str) -> list[str]:
+    """Retrieve all file paths relative to the repo root to verify existence."""
+    file_list = []
+    for root, dirs, files in os.walk(repo_path):
+        if '.git' in root:
+            continue
+        for file in files:
+            full_path = os.path.join(root, file)
+            rel_path = os.path.relpath(full_path, repo_path)
+            file_list.append(rel_path)
+    return file_list
+
 class RepoSandbox:
     """Context manager for a temporary git repository sandbox."""
     def __init__(self, repo_url: str):

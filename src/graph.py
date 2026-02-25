@@ -21,9 +21,45 @@ def load_rubric(state: AgentState) -> dict:
         return {"rubric": {"criteria": {}}}
 
 def evidence_aggregator(state: AgentState) -> dict:
-    """Aggregates evidence and prepares for judicial evaluation."""
+    """Aggregates evidence and performs hallucination checks."""
     print("--- Aggregator: EvidenceAggregator ---")
-    return state
+    import re
+    
+    verified = set()
+    hallucinated = set()
+    
+    # Simple regex to find words with dots or slashes like src/main.py
+    path_pattern = re.compile(r'[\w\-\./]+\.\w+')
+    repo_files = set(state.get("verified_paths", []))
+    
+    # Always allow some stubs for the interim
+    repo_files.update(['standard.pdf', 'architecture.png'])
+    
+    for ev_list in state.get("evidences", {}).values():
+        for ev in ev_list:
+            # Check the location and content for things that look like paths
+            potential_paths = path_pattern.findall(ev.location) + path_pattern.findall(ev.content)
+            for p in potential_paths:
+                # Basic filter for files
+                if any(p.endswith(ext) for ext in ['.py', '.md', '.json', '.pdf', '.png', '.toml', '.yaml', '.txt']):
+                    clean_p = p.lstrip('./').lstrip('/')
+                    
+                    # Exact match or suffix match (e.g. src/graph.py matches graph.py if it's unique)
+                    is_verified = False
+                    for rf in repo_files:
+                        if clean_p == rf or clean_p.endswith('/' + rf) or rf.endswith('/' + clean_p):
+                            verified.add(rf)
+                            is_verified = True
+                            break
+                    
+                    if not is_verified:
+                        # Only add if it's not a known allowed stub and not a false positive
+                        hallucinated.add(clean_p)
+                        
+    return {
+        "verified_paths": list(verified),
+        "hallucinated_paths": list(hallucinated)
+    }
 
 def judges_entry(state: AgentState) -> dict:
     """No-op fan-out hub: ensures conditional only routes to judges when continuing."""
@@ -64,6 +100,10 @@ def report_writer(state: AgentState) -> dict:
     
 ## Executive Summary
 {report.executive_summary}
+
+## Evidence Integrity
+- **Verified Paths:** {', '.join(set(report.verified_paths)) if report.verified_paths else 'None'}
+- **Hallucinated Paths:** {', '.join(set(report.hallucinated_paths)) if report.hallucinated_paths else 'None'}
 
 ## Overall Score: {report.overall_score:.2f} / 5.0
 
@@ -180,6 +220,8 @@ if __name__ == "__main__":
             "rubric": {},
             "evidences": {},
             "opinions": [],
+            "verified_paths": [],
+            "hallucinated_paths": [],
             "final_report": None
         }
         
