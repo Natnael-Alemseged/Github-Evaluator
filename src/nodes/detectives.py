@@ -74,7 +74,8 @@ def repo_investigator(state: AgentState) -> dict:
             ))
             
             # 3) Git Progression (Timeline)
-            timeline_analysis = analyze_git_progression(repo_path)
+            git_history = extract_git_history(repo_path)
+            timeline_analysis = analyze_git_progression(git_history)
             print(f"  [3] Timeline Analysis found: {len(timeline_analysis)} chars")
             evidences.append(Evidence(
                 detective_name="RepoInvestigator",
