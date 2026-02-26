@@ -138,8 +138,8 @@ def report_writer(state: AgentState) -> dict:
 - **Remediation:** {res.remediation if res.remediation else "No issues found."}
 """
         for op in res.judge_opinions:
-            reasoning = getattr(op, "reasoning", None) or getattr(op, "argument", "")
-            snippet = (reasoning[:300] + "\u2026") if len(reasoning) > 300 else reasoning
+            arg_text = getattr(op, "argument", "")
+            snippet = (arg_text[:300] + "\u2026") if len(arg_text) > 300 else arg_text
             md_content += f"  - **{op.judge}** (score {op.score}): {snippet}\n"
 
     md_content += "\n## Remediation Plan\n\n"
@@ -230,44 +230,33 @@ if __name__ == "__main__":
         
         default_repo = "https://github.com/Natnael-Alemseged/Github-Evaluator"
         
-        while True:
-            repo_input = input(f"\nEnter the target GitHub repository URL [Default: {default_repo}]: ").strip()
-            repo_url = repo_input if repo_input else default_repo
-            
-            if not is_safe_url(repo_url):
-                print(f"❌ Error: '{repo_url}' is not a valid or safe GitHub URL (must include github.com).")
-                continue
-                
-            print(f"✅ Target Repo: {repo_url}")
-            
-            run_id = f"audit_{uuid.uuid4().hex[:8]}"
-            config = {"configurable": {"thread_id": run_id}}
-            
-            initial_state = {
-                "repo_url": repo_url,
-                "pdf_path": "standard.pdf", # Report to cross-reference
-                "rubric_dimensions": [],
-                "evidences": {},
-                "opinions": [],
-                "repo_path": None,
-                "verified_paths": [],
-                "hallucinated_paths": [],
-                "repo_manifest": [],
-                "final_report": None
-            }
-            
-            try:
-                # Synchronous invoke within async wrapper
-                result = app.invoke(initial_state, config=config)
-                print("\n--- Audit Complete ---")
-                if result.get("final_report"):
-                    print(f"Overall Score: {result['final_report'].overall_score:.2f}/5.0")
-                break # Success, exit the loop
-            except Exception as e:
-                print(f"\n❌ Execution failed: {e}")
-                print("Note: The repository might be private or inaccessible. Ensure the URL is public and correct.")
-                choice = input("Would you like to try another URL? (y/n): ").lower()
-                if choice != 'y':
-                    break
+        repo_url = default_repo
+        print(f"✅ Target Repo: {repo_url}")
+        
+        run_id = f"audit_{uuid.uuid4().hex[:8]}"
+        config = {"configurable": {"thread_id": run_id}}
+        
+        initial_state = {
+            "repo_url": repo_url,
+            "pdf_path": "interim_report.pdf", # Report to cross-reference
+            "rubric_dimensions": [],
+            "evidences": {},
+            "opinions": [],
+            "repo_path": None,
+            "verified_paths": [],
+            "hallucinated_paths": [],
+            "repo_manifest": [],
+            "final_report": None
+        }
+        
+        try:
+            # Synchronous invoke within async wrapper
+            result = app.invoke(initial_state, config=config)
+            print("\n--- Audit Complete ---")
+            if result.get("final_report"):
+                print(f"Overall Score: {result['final_report'].overall_score:.2f}/5.0")
+        except Exception as e:
+            print(f"\n❌ Execution failed: {e}")
+            print("Note: The repository might be private or inaccessible. Ensure the URL is public and correct.")
     
     asyncio.run(run_audit())

@@ -71,7 +71,7 @@ def _re_evaluate_evidence_for_variance(
     # Defense: if high score but cited evidence missing or weak → overrule (Rule of Evidence)
     defense_op = next((op for op in relevant_ops if op.judge == "Defense"), None)
     if defense_op and d_score >= 4:
-        cites = getattr(defense_op, "citations", None) or getattr(defense_op, "cited_evidence", [])
+        cites = getattr(defense_op, "cited_evidence", [])
         indices = _citation_ids_to_evidence_index(cites)
         supported = sum(1 for i in indices if 0 <= i < len(all_evidence) and (all_evidence[i].content or "").strip())
         if not indices or supported < len(indices) / 2:
@@ -81,7 +81,7 @@ def _re_evaluate_evidence_for_variance(
     # Prosecutor: if low score and cited evidence confirms flaw → keep; else no change
     prosecutor_op = next((op for op in relevant_ops if op.judge == "Prosecutor"), None)
     if prosecutor_op and p_score <= 2:
-        cites = getattr(prosecutor_op, "citations", None) or getattr(prosecutor_op, "cited_evidence", [])
+        cites = getattr(prosecutor_op, "cited_evidence", [])
         indices = _citation_ids_to_evidence_index(cites)
         if indices and any(0 <= i < len(all_evidence) for i in indices):
             notes.append("Prosecutor evidence re-verified against Detective evidence.")
@@ -89,7 +89,7 @@ def _re_evaluate_evidence_for_variance(
     # Tech Lead: if high score with no citations → slight penalty (already in main logic)
     tech_op = next((op for op in relevant_ops if op.judge == "TechLead"), None)
     if tech_op and t_score >= 4:
-        cites = getattr(tech_op, "citations", None) or getattr(tech_op, "cited_evidence", [])
+        cites = getattr(tech_op, "cited_evidence", [])
         if not cites:
             t_score = min(t_score, 4)
             notes.append("Tech Lead score capped: no cited evidence.")
@@ -129,8 +129,8 @@ def _apply_fact_supremacy(
     """Rule of Evidence: Defense overruled if claims lack Detective evidence."""
     if not defense_op or d_score < 4:
         return computed_score, dissent
-    reasoning = getattr(defense_op, "reasoning", "") or getattr(defense_op, "argument", "")
-    if "metacognition" in reasoning.lower() or "deep" in reasoning.lower():
+    arg_text = getattr(defense_op, "argument", "")
+    if "metacognition" in arg_text.lower() or "deep" in arg_text.lower():
         # Check if any evidence supports this
         content_combined = " ".join((e.content or "") for e in all_evidence).lower()
         if "metacognition" not in content_combined and "evaluat" not in content_combined:
@@ -222,8 +222,8 @@ def chief_justice_node(state: AgentState) -> dict:
         # Hallucination penalty
         hallucinated_paths = state.get("hallucinated_paths", []) or []
         for op in relevant_ops:
-            reasoning = getattr(op, "reasoning", "") or getattr(op, "argument", "")
-            if any(hp in reasoning for hp in hallucinated_paths):
+            arg_text = getattr(op, "argument", "")
+            if any(hp in arg_text for hp in hallucinated_paths):
                 computed_score = min(computed_score, 2.5)
                 dissent.append("PENALTY: Opinion referenced hallucinated (non-existent) paths.")
                 break

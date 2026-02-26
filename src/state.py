@@ -22,8 +22,8 @@ class JudicialOpinion(BaseModel):
     judge: Literal["Prosecutor", "Defense", "TechLead"]
     criterion_id: str
     score: int = Field(ge=1, le=5, description="Score 1-5")
-    reasoning: str = Field(description="Detailed reasoning based strictly on cited evidence")
-    citations: List[str] = Field(description="List of evidence IDs or findings used in the argument")
+    argument: str = Field(description="Detailed reasoning based strictly on cited evidence")
+    cited_evidence: List[str] = Field(description="List of evidence IDs or findings used in the argument")
     is_automated_fallback: bool = Field(default=False, description="True when LLM failed and a stub opinion was used")
 
 # --- Chief Justice Output ---
