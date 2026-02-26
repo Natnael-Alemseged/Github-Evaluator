@@ -5,7 +5,7 @@ from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
 from src.state import AgentState, Evidence
 from src.tools.repo_tools import RepoSandbox, extract_git_history, analyze_graph_structure, analyze_security_features, analyze_git_progression, get_all_repo_files
-# from src.tools.doc_tools import ingest_pdf, query_pdf # Placeholder for Docling
+from src.tools.doc_tools import extract_images_from_pdf
 
 # --- Setup LLM Fallback ---
 llms = []
@@ -63,9 +63,9 @@ def repo_investigator(state: AgentState) -> dict:
             evidences.append(security_ev)
             
             # Get forensic instructions from rubric if available
-            rubric = state.get("rubric", {})
+            rubric_dimensions = state.get("rubric_dimensions", [])
             instructions = []
-            for dim in rubric.get("dimensions", []):
+            for dim in rubric_dimensions:
                 if dim.get("target_artifact") in ["git history / log", "src/graph.py"]:
                     instructions.append(f"- {dim['name']}: {dim['forensic_instruction']}")
             
@@ -123,75 +123,182 @@ def repo_investigator(state: AgentState) -> dict:
     }
 
 def doc_analyst(state: AgentState) -> dict:
-    """Node: Analyzes documentation and PDFs using RAG."""
+    """Node: Analyzes documentation and PDFs using RAG-lite (chunked, no full dump)."""
     print("--- Detective: DocAnalyst ---")
     from src.tools.doc_tools import ingest_pdf, query_vector_store
-    
-    # 1. Ingest standard documents (In a real app, this would be triggered once)
-    # Using a fake path for demonstration
+
+    pdf_path = state.get("pdf_path") or "standard.pdf"
+    evidences = []
+
     try:
-        ingest_pdf("standard.pdf")
+        ingest_pdf(pdf_path)
     except Exception as e:
         print(f"DocAnalyst ingestion warning: {e}")
-    
-    # 2. Query for specific evidence
-    query = "What is the requirement for dependency management and graph architecture?"
-    finding_content = query_vector_store(query)
-    
-    evidences = [Evidence(
+        evidences.append(Evidence(
+            detective_name="DocAnalyst",
+            goal="Ingest PDF for RAG query",
+            found=False,
+            content=str(e),
+            location=pdf_path,
+            rationale="PDF ingestion failed.",
+            confidence=0.0
+        ))
+        return {"evidences": {"doc_analyst": evidences}}
+
+    # Rubric Protocol A.2: Keyword search for all four theoretical-depth terms and context check
+    THEORETICAL_DEPTH_TERMS = [
+        "Dialectical Synthesis",
+        "Fan-In / Fan-Out",
+        "Metacognition",
+        "State Synchronization",
+    ]
+    ARCHITECTURAL_KEYWORDS = (
+        "graph", "edge", "node", "parallel", "fan-out", "fan-in", "fan_out", "fan_in",
+        "implement", "orchestration", "StateGraph", "reducer", "aggregator",
+        "synchronization", "persona", "judge", "detective", "dialectical",
+    )
+    BUZZWORD_INDICATORS = ("executive summary", "we use", "our system uses", "the report describes")
+
+    theoretical_findings: List[dict] = []
+    for term in THEORETICAL_DEPTH_TERMS:
+        snippet = query_vector_store(term)
+        if (not snippet or "not found" in (snippet or "").lower()) and term == "Fan-In / Fan-Out":
+            snip_in = query_vector_store("Fan-In")
+            snip_out = query_vector_store("Fan-Out")
+            snippet = ((snip_in or "") + "\n" + (snip_out or "")).strip() if (snip_in or snip_out) else snippet
+        found = bool(snippet and "not found" not in snippet.lower() and snippet.strip())
+        if not found:
+            theoretical_findings.append({
+                "term": term,
+                "found": False,
+                "context": "not_present",
+                "sentences": "",
+            })
+            continue
+        snippet_lower = snippet.lower()
+        in_architectural = any(kw in snippet_lower for kw in ARCHITECTURAL_KEYWORDS)
+        looks_buzzword = (
+            len(snippet.strip()) < 120
+            or any(phrase in snippet_lower for phrase in BUZZWORD_INDICATORS)
+        ) and not in_architectural
+        context = "architectural_explanation" if in_architectural else ("buzzword_or_executive_summary" if looks_buzzword else "substantive_section")
+        # Capture first 400 chars as the specific sentences detailing the concept
+        sentences = snippet.strip()[:400] + ("..." if len(snippet.strip()) > 400 else "")
+        theoretical_findings.append({
+            "term": term,
+            "found": True,
+            "context": context,
+            "sentences": sentences,
+        })
+
+    theoretical_summary = "\n\n".join(
+        f"**{f['term']}**: {'Found' if f['found'] else 'Not found'}"
+        + (f" — Context: {f['context']}. Sentences: {f['sentences']}" if f.get("sentences") else "")
+        for f in theoretical_findings
+    )
+    evidences.append(Evidence(
+        detective_name="DocAnalyst",
+        goal="Theoretical Depth: search for 'Dialectical Synthesis', 'Fan-In / Fan-Out', 'Metacognition', 'State Synchronization' and capture if in architectural explanation or buzzword",
+        found=any(f["found"] for f in theoretical_findings),
+        content=theoretical_summary,
+        location=f"{pdf_path} (Vector Search — theoretical depth keywords)",
+        rationale="RAG keyword search per rubric; context check distinguishes architectural explanations from executive-summary buzzwords.",
+        confidence=0.95
+    ))
+
+    # General architecture/dependency compliance query (existing behavior)
+    query = "What does the report say about Dialectical Synthesis?"
+    findings_query = query
+    rubric_dimensions = state.get("rubric_dimensions", [])
+    for dim in rubric_dimensions:
+        if dim.get("target_artifact") == "report" or (dim.get("target_artifact") or "").lower().find("report") >= 0:
+            findings_query = dim.get("forensic_instruction") or query
+            break
+
+    finding_content = query_vector_store(findings_query)
+
+    evidences.append(Evidence(
         detective_name="DocAnalyst",
         goal="Check for architecture and dependency compliance in documentation",
-        found=True,
-        content="Technical Specifications found in standard.pdf: Project requires LangGraph for orchestration, " +
-                "strict parallel detective layers, and a tripartite judicial bench for scoring. " +
-                "Dependency management enforced via uv/pyproject.toml.",
-        location="standard.pdf (Vector Search)",
-        rationale="Verified project requirements against the 'Dialectical Synthesis' specification.",
-        confidence=1.0
-    )]
+        found=bool(finding_content and "not found" not in finding_content.lower()),
+        content=finding_content or "No relevant information found in documentation.",
+        location=f"{pdf_path} (Vector Search)",
+        rationale="RAG-lite query over chunked PDF; verified against documentation.",
+        confidence=0.95
+    ))
     return {"evidences": {"doc_analyst": evidences}}
 
 def vision_inspector(state: AgentState) -> dict:
-    """Node: Vision analysis of architectural diagrams."""
+    """Node: Vision analysis of architectural diagrams (multimodal detective).
+    Implements extract_images_from_pdf(path) and passes images to vision model with:
+    'Is this a StateGraph diagram or a generic box diagram?' Running vision to get results is optional."""
     print("--- Detective: VisionInspector ---")
-    
-    try:
-        # In a real environment with LLM capabilities (e.g., gemini-1.5-flash or llama-3.2-vision)
-        # We check if the file exists first to avoid hallucinating evidence
-        diag_path = "architecture.png" # Standard location
-        exists = os.path.exists(diag_path)
-        
-        if exists:
+    evidence = None
+    pdf_path = state.get("pdf_path") or ""
+    diag_path = "architecture.png"
+
+    # 1) Extract images from PDF per doc (VisionInspector task)
+    image_paths = extract_images_from_pdf(pdf_path) if pdf_path and os.path.exists(pdf_path) else []
+    if not image_paths and os.path.exists(diag_path):
+        image_paths = [diag_path]
+
+    vision_question = "Is this a StateGraph diagram or a generic box diagram? Does it show parallel fan-out to detectives/judges and fan-in to an aggregator?"
+
+    # 2) Optionally pass to multimodal LLM (running to get results is optional per doc)
+    for model in llms:
+        if not image_paths:
+            break
+        try:
+            # Prefer a model that supports images (e.g. Gemini)
+            if hasattr(model, "bind") and image_paths:
+                from langchain_core.messages import HumanMessage
+                parts = [{"type": "text", "text": vision_question}]
+                for p in image_paths[:3]:
+                    if os.path.exists(p):
+                        try:
+                            with open(p, "rb") as f:
+                                import base64
+                                b64 = base64.b64encode(f.read()).decode()
+                            parts.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+                        except Exception:
+                            continue
+                if len(parts) > 1:
+                    resp = model.invoke([HumanMessage(content=parts)])
+                    content = getattr(resp, "content", str(resp))
+                    evidence = Evidence(
+                        detective_name="VisionInspector",
+                        goal="Analyze architectural diagrams for pipeline correctness",
+                        found=True,
+                        content=f"Multimodal Vision Analysis: {content}",
+                        location=f"{pdf_path or diag_path} (Vision Scan)",
+                        rationale="Vision model asked: " + vision_question,
+                        confidence=0.95
+                    )
+                    break
+        except Exception as e:
+            print(f"VisionInspector vision model skip: {e}")
+            continue
+
+    if evidence is None:
+        if image_paths:
             evidence = Evidence(
                 detective_name="VisionInspector",
                 goal="Analyze architectural diagrams for pipeline correctness",
                 found=True,
-                content="Multimodal Vision Analysis: Architectural diagrams correctly match the implemented LangGraph StateGraph. " +
-                        "Visual extraction of diagram nodes confirms parallel 'fan-out' to Prosecutor, Defense, and TechLead, " +
-                        "and proper 'fan-in' to ChiefJustice.",
-                location="architecture.png (Vision Scan)",
-                rationale="Visual diagram mapping rigorously aligns with the AST analysis of the Python source.",
-                confidence=0.98
+                content="Images extracted from PDF/repo; vision model not invoked or unavailable (optional per spec).",
+                location=f"{pdf_path or diag_path}",
+                rationale="extract_images_from_pdf implemented; running vision to get results is optional.",
+                confidence=0.7
             )
         else:
             evidence = Evidence(
                 detective_name="VisionInspector",
                 goal="Analyze architectural diagrams",
                 found=False,
-                content="No architecture diagram found in root. Cannot verify visual alignment.",
+                content="No architecture diagram or PDF images found. Cannot verify visual alignment.",
                 location="N/A",
-                rationale="Missing architecture.png file.",
+                rationale="Missing architecture.png and no images from PDF.",
                 confidence=1.0
             )
-    except Exception as e:
-        evidence = Evidence(
-            detective_name="VisionInspector",
-            goal="Analyze architectural diagrams",
-            found=False,
-            content=f"Vision inspection failed: {str(e)}",
-            location="N/A",
-            rationale="Error during multimodal processing",
-            confidence=0.0
-        )
-        
+
     return {"evidences": {"vision_inspector": [evidence]}}
