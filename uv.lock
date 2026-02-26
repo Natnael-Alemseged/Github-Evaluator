@@ -203,6 +203,7 @@ dependencies = [
     { name = "langgraph-checkpoint-sqlite" },
     { name = "langsmith" },
     { name = "pydantic" },
+    { name = "pypdf" },
     { name = "python-dotenv" },
     { name = "sentence-transformers" },
     { name = "tenacity" },
@@ -223,6 +224,7 @@ requires-dist = [
     { name = "langgraph-checkpoint-sqlite", specifier = ">=2.0.0" },
     { name = "langsmith", specifier = ">=0.1.0" },
     { name = "pydantic", specifier = ">=2.9.0" },
+    { name = "pypdf", specifier = ">=4.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "sentence-transformers", specifier = ">=3.0.0" },
     { name = "tenacity", specifier = ">=9.0.0" },
@@ -3156,6 +3158,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b1/dd/def55d8a80b0817f486f2712fc6243482c3264d373dc5ff75037b3aeb7ea/pyobjc_framework_vision-12.1-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:04296f0848cc8cdead66c76df6063720885cbdf24fdfd1900749a6e2297313db", size = 16782, upload-time = "2025-11-14T10:06:48.816Z" },
     { url = "https://files.pythonhosted.org/packages/a7/a4/ee1ef14d6e1df6617e64dbaaa0ecf8ecb9e0af1425613fa633f6a94049c1/pyobjc_framework_vision-12.1-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:631add775ed1dafb221a6116137cdcd78432addc16200ca434571c2a039c0e03", size = 16614, upload-time = "2025-11-14T10:06:50.852Z" },
     { url = "https://files.pythonhosted.org/packages/af/53/187743d9244becd4499a77f8ee699ae286e2f6ade7c0c7ad2975ae60f187/pyobjc_framework_vision-12.1-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:fe41a1a70cc91068aee7b5293fa09dc66d1c666a8da79fdf948900988b439df6", size = 16771, upload-time = "2025-11-14T10:06:53.04Z" },
+]
+
+[[package]]
+name = "pypdf"
+version = "6.7.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/9b/63e767042fc852384dc71e5ff6f990ee4e1b165b1526cf3f9c23a4eebb47/pypdf-6.7.3.tar.gz", hash = "sha256:eca55c78d0ec7baa06f9288e2be5c4e8242d5cbb62c7a4b94f2716f8e50076d2", size = 5303304, upload-time = "2026-02-24T17:23:11.42Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b0/90/3308a9b8b46c1424181fdf3f4580d2b423c5471425799e7fc62f92d183f4/pypdf-6.7.3-py3-none-any.whl", hash = "sha256:cd25ac508f20b554a9fafd825186e3ba29591a69b78c156783c5d8a2d63a1c0a", size = 331263, upload-time = "2026-02-24T17:23:09.932Z" },
 ]
 
 [[package]]
