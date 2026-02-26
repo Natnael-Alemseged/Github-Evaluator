@@ -139,8 +139,7 @@ def report_writer(state: AgentState) -> dict:
 """
         for op in res.judge_opinions:
             arg_text = getattr(op, "argument", "")
-            snippet = (arg_text[:300] + "\u2026") if len(arg_text) > 300 else arg_text
-            md_content += f"  - **{op.judge}** (score {op.score}): {snippet}\n"
+            md_content += f"  - **{op.judge}** (score {op.score}): {arg_text}\n"
 
     md_content += "\n## Remediation Plan\n\n"
     md_content += report.remediation_plan + "\n"
