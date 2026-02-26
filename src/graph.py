@@ -6,7 +6,8 @@ load_dotenv()
 from langgraph.graph import StateGraph, START, END
 from src.state import AgentState
 from src.nodes.detectives import repo_investigator, doc_analyst, vision_inspector
-from src.nodes.judges import prosecutor, defense, tech_lead, chief_justice
+from src.nodes.judges import prosecutor, defense, tech_lead
+from src.nodes.justice import chief_justice_node
 
 def load_rubric(state: AgentState) -> dict:
     """Node: Loads the rubric from rubric.json."""
@@ -14,11 +15,13 @@ def load_rubric(state: AgentState) -> dict:
     rubric_path = os.path.join(os.path.dirname(__file__), "rubric.json")
     try:
         with open(rubric_path, "r") as f:
-            rubric = json.load(f)
-        return {"rubric": rubric}
+            rubric_data = json.load(f)
+        # The guide expects a list of dimensions
+        dimensions = rubric_data.get("dimensions", [])
+        return {"rubric_dimensions": dimensions}
     except Exception as e:
         print(f"Error loading rubric: {e}")
-        return {"rubric": {"criteria": {}}}
+        return {"rubric_dimensions": []}
 
 def evidence_aggregator(state: AgentState) -> dict:
     """Aggregates evidence and performs hallucination checks."""
@@ -79,11 +82,13 @@ def evidence_router(state: AgentState) -> str:
     return "continue_to_judges"
 
 def report_writer(state: AgentState) -> dict:
-    """Node: Writes the final report to a Markdown file."""
+    """Node: Writes the final report to a Markdown file.
+    Structure: Executive Summary -> Criterion Breakdown -> Remediation Plan (no console print).
+    """
     print("--- Reporter: MarkdownWriter ---")
     report = state.get("final_report")
-    report_path = "reports/audit_report.md"
-    os.makedirs("reports", exist_ok=True)
+    report_path = "audit/report_onself_generated/report.md"
+    os.makedirs("audit/report_onself_generated", exist_ok=True)
     
     if not report:
         print("No report to write (e.g. audit skipped due to no evidence). Writing minimal report.")
@@ -95,19 +100,22 @@ def report_writer(state: AgentState) -> dict:
             print(f"Failed to write report: {e}")
         return state
     
-    md_content = f"""# Audit Report: {report.repo_name}
+    md_content = f"""# Audit Report: {report.repo_name or 'Repository'}
 
 ## Executive Summary
+
 {report.executive_summary}
 
-## Evidence Integrity
+## Criterion Breakdown
+
+### Evidence Integrity
 - **Repo Manifest:** {len(state.get('repo_manifest', []))} files scanned from the repository.
 - **Verified Paths (cited in evidence):** {', '.join(sorted(set(report.verified_paths))) if report.verified_paths else 'None'}
 - **Hallucinated Paths (cited but not in repo):** {', '.join(sorted(set(report.hallucinated_paths))) if report.hallucinated_paths else 'None ✅'}
 
-## Overall Score: {report.overall_score:.2f} / 5.0
+### Overall Score: {report.overall_score:.2f} / 5.0
 
-## Score Summary
+### Score Summary
 
 | Dimension | Prosecutor | Defense | TechLead | Final | Verdict |
 |-----------|:----------:|:-------:|:--------:|:-----:|:-------:|
@@ -116,22 +124,25 @@ def report_writer(state: AgentState) -> dict:
         p_score = next((op.score for op in res.judge_opinions if op.judge == "Prosecutor"), "—")
         d_score = next((op.score for op in res.judge_opinions if op.judge == "Defense"), "—")
         t_score = next((op.score for op in res.judge_opinions if op.judge == "TechLead"), "—")
-        md_content += f"| {res.dimension_name} | {p_score} | {d_score} | {t_score} | **{res.final_score:.2f}** | {res.verdict} |\n"
+        verdict = "Pass" if res.final_score >= 3 else "Fail"
+        md_content += f"| {res.dimension_name} | {p_score} | {d_score} | {t_score} | **{res.final_score}** | {verdict} |\n"
 
-    md_content += "\n## Dimension Details\n"
+    md_content += "\n### Dimension Details\n"
     for res in report.criteria:
+        verdict = "Pass" if res.final_score >= 3 else "Fail"
         md_content += f"""
-### {res.dimension_name}
-- **Final Score:** {res.final_score:.2f} / 5.0
-- **Verdict:** {res.verdict}
+#### {res.dimension_name}
+- **Final Score:** {res.final_score} / 5
+- **Verdict:** {verdict}
 - **Dissent / Notes:** {res.dissent_summary if res.dissent_summary else "Consensus reached."}
 - **Remediation:** {res.remediation if res.remediation else "No issues found."}
 """
         for op in res.judge_opinions:
-            snippet = op.argument[:300] + ('\u2026' if len(op.argument) > 300 else '')
+            reasoning = getattr(op, "reasoning", None) or getattr(op, "argument", "")
+            snippet = (reasoning[:300] + "\u2026") if len(reasoning) > 300 else reasoning
             md_content += f"  - **{op.judge}** (score {op.score}): {snippet}\n"
-    
-    md_content += "\n## Remediation Plan\n"
+
+    md_content += "\n## Remediation Plan\n\n"
     md_content += report.remediation_plan + "\n"
         
     try:
@@ -164,7 +175,7 @@ workflow.add_node("judges_entry", judges_entry)
 workflow.add_node("prosecutor", prosecutor)
 workflow.add_node("defense", defense)
 workflow.add_node("tech_lead", tech_lead)
-workflow.add_node("chief_justice", chief_justice)
+workflow.add_node("chief_justice", chief_justice_node)
 workflow.add_node("report_writer", report_writer)
 
 # Define edges
@@ -224,10 +235,11 @@ if __name__ == "__main__":
         
         initial_state = {
             "repo_url": "https://github.com/Natnael-Alemseged/Github-Evaluator",
-            "repo_path": None,
-            "rubric": {},
+            "pdf_path": "standard.pdf",
+            "rubric_dimensions": [],
             "evidences": {},
             "opinions": [],
+            "repo_path": None,
             "verified_paths": [],
             "hallucinated_paths": [],
             "repo_manifest": [],
