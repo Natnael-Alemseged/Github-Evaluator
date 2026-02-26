@@ -82,3 +82,44 @@ def query_vector_store(query: str, k: int = 3) -> str:
 def query_pdf(query: str, chunks: List[str]) -> str:
     """Backward compatible stub."""
     return query_vector_store(query)
+
+
+def extract_images_from_pdf(path: str) -> List[str]:
+    """Extract images from a PDF; returns list of paths to saved image files (e.g. for vision model).
+    Uses pypdf when available; otherwise returns empty list. Caller may clean up temp files."""
+    if not os.path.exists(path):
+        return []
+    out_paths: List[str] = []
+    try:
+        import tempfile
+        from pypdf import PdfReader
+        reader = PdfReader(path)
+        tmpdir = tempfile.mkdtemp(prefix="auditor_pdf_img_")
+        idx = 0
+        for page in reader.pages:
+            images_attr = getattr(page, "images", None)
+            if images_attr is None:
+                continue
+            items = list(images_attr.values()) if isinstance(images_attr, dict) else list(images_attr)
+            for image_obj in items:
+                try:
+                    img = getattr(image_obj, "image", None)
+                    if img is not None and hasattr(img, "save"):
+                        ext = getattr(image_obj, "name", "img") or "img"
+                        suffix = os.path.splitext(str(ext))[1] or ".png"
+                        out = os.path.join(tmpdir, f"img_{idx}{suffix}")
+                        img.save(out)
+                        out_paths.append(out)
+                        idx += 1
+                except Exception:
+                    continue
+        if not out_paths and os.path.exists(tmpdir):
+            try:
+                shutil.rmtree(tmpdir)
+            except Exception:
+                pass
+    except ImportError:
+        pass
+    except Exception:
+        pass
+    return out_paths
