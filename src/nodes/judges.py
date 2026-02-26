@@ -15,7 +15,7 @@ if "GROQ_API_KEY" in os.environ:
 # 2. OpenRouter (Free models)
 if "OPENROUTER_KEY" in os.environ:
     llms.append(ChatOpenAI(
-        model="openrouter/auto-free", # Using the auto-free model selector
+        model="google/gemini-2.0-pro-exp-02-05:free",
         openai_api_key=os.environ["OPENROUTER_KEY"],
         openai_api_base="https://openrouter.ai/api/v1",
         default_headers={
@@ -131,7 +131,8 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
                     opinions.append(opinion)
                     break # Success on this dimension
                 except Exception as e:
-                    print(f"LLM {model.__class__.__name__} attempt {attempt+1} failed for {judge_role} - {criterion_id}: {e}")
+                    model_name = getattr(model, "model_name", getattr(model, "model", "Unknown"))
+                    print(f"LLM {model.__class__.__name__} ({model_name}) attempt {attempt+1} failed for {judge_role} - {criterion_id}: {e}")
                     if attempt == 1: # On second failure, move to next model
                         continue
             
@@ -156,9 +157,6 @@ def prosecutor(state: AgentState) -> dict:
 
 def defense(state: AgentState) -> dict:
     return {"opinions": get_judge_opinion("Defense", state)}
-
-def tech_lead(state: AgentState) -> dict:
-    return {"opinions": get_judge_opinion("TechLead", state)}
 
 def tech_lead(state: AgentState) -> dict:
     return {"opinions": get_judge_opinion("TechLead", state)}
