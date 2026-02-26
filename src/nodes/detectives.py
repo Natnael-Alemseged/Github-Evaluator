@@ -2,17 +2,39 @@ import os
 from typing import List
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_groq import ChatGroq
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from src.state import AgentState, Evidence
-from src.tools.repo_tools import RepoSandbox, extract_git_history, analyze_graph_structure, analyze_security_features, analyze_git_progression, get_all_repo_files
+from src.tools.repo_tools import (
+    RepoSandbox,
+    extract_git_history,
+    analyze_graph_structure,
+    analyze_security_features,
+    analyze_git_progression,
+    get_all_repo_files,
+    analyze_state_management,
+    analyze_structured_output,
+    analyze_judicial_nuance,
+    analyze_chief_justice_synthesis
+)
+from langchain_openai import ChatOpenAI
 from src.tools.doc_tools import extract_images_from_pdf
 
 # --- Setup LLM Fallback ---
 llms = []
 if "GROQ_API_KEY" in os.environ:
     llms.append(ChatGroq(model="llama-3.3-70b-versatile", temperature=0))
-if "GOOGLE_API_KEY" in os.environ:
-    llms.append(ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0))
+if "OPENROUTER_KEY" in os.environ:
+    # Use highly available free model on OpenRouter for detectives
+    llms.append(ChatOpenAI(
+        model="openrouter/auto-free",
+        openai_api_key=os.environ["OPENROUTER_KEY"],
+        openai_api_base="https://openrouter.ai/api/v1",
+        default_headers={
+            "HTTP-Referer": "https://github.com/Natnael-Alemseged/Github-Evaluator",
+            "X-Title": "Automaton Auditor"
+        },
+        temperature=0
+    ))
 
 
 def repo_investigator(state: AgentState) -> dict:
@@ -22,86 +44,116 @@ def repo_investigator(state: AgentState) -> dict:
     
     evidences = []
     try:
-        # Use existing repo_path if available (e.g., from a previous run or setup)
-        # but usually we want a fresh sandbox per run
         with RepoSandbox(repo_url) as repo_path:
-            history = extract_git_history(repo_path)
+            print(f"--- RepoInvestigator Analyzing: {repo_path} ---")
             
-            # Look for graph.py specifically
-            # In a real app, we'd scan for any file containing StateGraph
-            graph_file = os.path.join(repo_path, "src/graph.py")
-            graph_analysis = analyze_graph_structure(graph_file) if os.path.exists(graph_file) else "src/graph.py not found"
-            
-            # Analyze Git progression explicitly
-            git_progression_analysis = analyze_git_progression(history)
-            
-            # Emit raw progression evidence
-            prog_ev = Evidence(
+            # 1) Analysis of Graph Structure
+            graph_analysis = analyze_graph_structure(repo_path)
+            print(f"  [1] Graph Structure found: {len(graph_analysis)} chars")
+            evidences.append(Evidence(
                 detective_name="RepoInvestigator",
-                goal="Verify atomic commit history (setup -> tools -> graph) and commit message quality",
-                found=True if "Identified sequential" in git_progression_analysis or ">3 commits" in git_progression_analysis else False,
-                content=f"Full History Analysis:\n{history[:1500]}\n\n{git_progression_analysis}",
-                location="git log --oneline --reverse",
-                rationale="Deterministic check against expected commit milestones and atomic structure.",
+                goal="Verify fan-out/fan-in and StateGraph structure",
+                found="StateGraph" in graph_analysis,
+                content=graph_analysis,
+                location="src/graph.py",
+                rationale="AST analysis of graph definition file.",
                 confidence=1.0
-            )
-            evidences.append(prog_ev)
+            ))
             
-            # Look for safe tool engineering
-            security_analysis = analyze_security_features(repo_path)
-            
-            # Emit raw security evidence to bypass LLM summarization loss
-            security_ev = Evidence(
+            # 2) History Forensics
+            history_analysis = extract_git_history(repo_path)
+            print(f"  [2] History Analysis found: {len(history_analysis)} chars")
+            evidences.append(Evidence(
                 detective_name="RepoInvestigator",
-                goal="Scan for secure tool engineering (sandboxing, subprocesses)",
-                found=True if "Uses" in security_analysis else False,
+                goal="Retrieve git history for effort and atomic commits",
+                found=len(history_analysis) > 50,
+                content=history_analysis,
+                location="Git Log",
+                rationale="Used to gauge developer effort and commit quality.",
+                confidence=1.0
+            ))
+            
+            # 3) Git Progression (Timeline)
+            timeline_analysis = analyze_git_progression(repo_path)
+            print(f"  [3] Timeline Analysis found: {len(timeline_analysis)} chars")
+            evidences.append(Evidence(
+                detective_name="RepoInvestigator",
+                goal="Verify logical setup -> tools -> graph progression",
+                found="Timeline reconstruction:" in timeline_analysis,
+                content=timeline_analysis,
+                location="Git History Analytics",
+                rationale="Analyzes temporal development stages.",
+                confidence=1.0
+            ))
+
+            # 4) State Management
+            state_analysis = analyze_state_management(repo_path)
+            print(f"  [4] State Management found: {len(state_analysis)} chars")
+            evidences.append(Evidence(
+                detective_name="RepoInvestigator",
+                goal="Verify Pydantic models and Annotated reducers in state",
+                found="Pydantic BaseModel found" in state_analysis,
+                content=state_analysis,
+                location="src/state.py",
+                rationale="Keyword scan for State Management Rigor.",
+                confidence=1.0
+            ))
+
+            # 5) Structured Output
+            output_analysis = analyze_structured_output(repo_path)
+            print(f"  [5] Structured Output found: {len(output_analysis)} chars")
+            evidences.append(Evidence(
+                detective_name="RepoInvestigator",
+                goal="Verify .with_structured_output() in judges",
+                found="Uses '.with_structured_output()'" in output_analysis,
+                content=output_analysis,
+                location="src/nodes/judges.py",
+                rationale="Keyword scan for Structured Output enforcement.",
+                confidence=1.0
+            ))
+
+            # 6) Judicial Nuance
+            nuance_analysis = analyze_judicial_nuance(repo_path)
+            print(f"  [6] Judicial Nuance found: {len(nuance_analysis)} chars")
+            evidences.append(Evidence(
+                detective_name="RepoInvestigator",
+                goal="Verify distinct persona instructions (Prosecutor, Defense, Tech Lead)",
+                found="Three distinct personas defined" in nuance_analysis,
+                content=nuance_analysis,
+                location="src/nodes/judges.py",
+                rationale="Keyword scan for persona-specific system prompt instructions.",
+                confidence=1.0
+            ))
+            
+            # 7) Chief Justice Synthesis
+            justice_analysis = analyze_chief_justice_synthesis(repo_path)
+            print(f"  [7] Chief Justice found: {len(justice_analysis)} chars")
+            evidences.append(Evidence(
+                detective_name="RepoInvestigator",
+                goal="Verify Chief Justice deterministic synthesis logic",
+                found="deterministic Python logic" in justice_analysis,
+                content=justice_analysis,
+                location="src/nodes/justice.py",
+                rationale="Deterministic scan for specific Python synthesis rules.",
+                confidence=1.0
+            ))
+
+            # 8) Safe Tool Engineering
+            security_analysis = analyze_security_features(repo_path)
+            print(f"  [8] Security Analysis found: {len(security_analysis)} chars")
+            evidences.append(Evidence(
+                detective_name="RepoInvestigator",
+                goal="Scan for secure tool engineering",
+                found="Uses 'tempfile' for isolated sandboxing" in security_analysis,
                 content=security_analysis,
                 location="src/tools/repo_tools.py",
-                rationale="Deterministic AST scan for security imports and patterns.",
+                rationale="Scan for subprocess safety and temporary directory sandboxing.",
                 confidence=1.0
-            )
-            evidences.append(security_ev)
-            
-            # Get forensic instructions from rubric if available
-            rubric_dimensions = state.get("rubric_dimensions", [])
-            instructions = []
-            for dim in rubric_dimensions:
-                if dim.get("target_artifact") in ["git history / log", "src/graph.py"]:
-                    instructions.append(f"- {dim['name']}: {dim['forensic_instruction']}")
-            
-            instr_text = "\n".join(instructions)
-            
-            evidence = None
-            for model in llms:
-                structured_ev = model.with_structured_output(Evidence)
-                if not structured_ev: continue
-                
-                try:
-                    prompt = f"Analyze the following repository data according to these instructions:\n{instr_text}\n\nData:\nHistory: {history[:1500]}\nGraph Analysis: {graph_analysis}"
-                    evidence = structured_ev.invoke([
-                        SystemMessage(content="You are a forensic detective. Output only objective evidence without opinions."),
-                        HumanMessage(content=prompt)
-                    ])
-                    evidence.detective_name = "RepoInvestigator"
-                    evidences.append(evidence)
-                    break 
-                except Exception as e:
-                    print(f"RepoInvestigator LLM failed: {e}")
-                    continue
-            
-            if not evidence:
-                evidences.append(Evidence(
-                    detective_name="RepoInvestigator",
-                    goal="Verify repository history and structure",
-                    found=True,
-                    content=f"History: {history[:400]}...\nGraph: {graph_analysis}",
-                    location="git log & AST",
-                    rationale="Extracted git history confirms logical progression (setup -> repo_tools -> graph). AST confirms parallel StateGraph architecture.",
-                    confidence=1.0
-                ))
+            ))
             
             # Emit raw list of actual files for hallucination checking
             all_files = get_all_repo_files(repo_path)
+            print(f"  [9] Manifest found: {len(all_files)} files")
             
     except Exception as e:
         print(f"RepoInvestigator failed: {e}")
@@ -248,6 +300,10 @@ def vision_inspector(state: AgentState) -> dict:
     for model in llms:
         if not image_paths:
             break
+        # Only attempt multimodal for Gemini or specify proper vision model
+        if "Google" not in model.__class__.__name__:
+            continue
+            
         try:
             # Prefer a model that supports images (e.g. Gemini)
             if hasattr(model, "bind") and image_paths:
