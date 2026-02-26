@@ -146,7 +146,7 @@ def analyze_graph_structure(file_or_repo_path: str) -> str:
                 if hasattr(ast, 'unparse'):
                     findings.append(f"Found Annotated reducer usage: {ast.unparse(node)}")
                     
-        return f"Graph & State AST Analysis: {'; '.join(set(findings)) if findings else 'No graph structures found'}"
+        return f"Graph & State AST Analysis:\n" + "\n".join(set(findings)) if findings else "No graph structures found."
     except Exception as e:
         return f"AST parsing failed: {e}"
 
