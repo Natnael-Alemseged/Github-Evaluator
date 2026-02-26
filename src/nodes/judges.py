@@ -33,7 +33,7 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
         all_evidence.extend(ev_list)
         
     evidence_text = "\n".join([f"ID: {i}, Detective: {e.detective_name}, Finding: {e.content}, Source: {e.location}" for i, e in enumerate(all_evidence)])
-    rubric = state["rubric"]
+    rubric_dimensions = state.get("rubric_dimensions", [])
     
     opinions = []
     
@@ -65,60 +65,65 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
         """
     }
 
-    for dimension in rubric.get("dimensions", []):
+    for dimension in rubric_dimensions:
         criterion_id = dimension["id"]
         details = dimension
         
         opinion = None
         for model in llms:
             structured_llm = model.with_structured_output(JudicialOpinion)
-            
             if not structured_llm:
                 continue
 
-            prompt = f"""
-            You are the {judge_role}. 
-            
-            ROLE MISSION:
-            {role_instructions.get(judge_role, "Perform your role as a judge.")}
+            # Phase 3 requirement: Force a retry on parser errors
+            for attempt in range(2):
+                try:
+                    prompt = f"""
+                    You are the {judge_role}. 
+                    
+                    ROLE MISSION:
+                    {role_instructions.get(judge_role, "Perform your role as a judge.")}
 
-            Evaluation Dimension: '{details['name']}'
-            Dimension Description: {details.get('forensic_instruction', 'N/A')}
+                    Evaluation Dimension: '{details['name']}'
+                    Dimension Description: {details.get('forensic_instruction', 'N/A')}
+                    
+                    Success Pattern: {details.get('success_pattern', 'N/A')}
+                    Failure Pattern: {details.get('failure_pattern', 'N/A')}
+                    
+                    Evidence Collected by Detectives:
+                    {evidence_text}
+                    
+                    Output a JudicialOpinion with:
+                    - judge: {judge_role}
+                    - criterion_id: {criterion_id}
+                    - reasoning: Your specific reasoning based strictly on the role mission above.
+                    - citations: Reference IDs (e.g. ['0', '2']) from the evidence list
+                    - score: 1-5 (1=Critical Failure, 5=Excellence)
+                    """
+                    opinion = structured_llm.invoke([
+                        SystemMessage(content=f"You are a member of the judicial bench: {judge_role}."),
+                        HumanMessage(content=prompt)
+                    ])
+                    # Ensure the identity matches in case of LLM drift
+                    opinion.judge = judge_role
+                    opinion.criterion_id = criterion_id
+                    opinions.append(opinion)
+                    break # Success on this dimension
+                except Exception as e:
+                    print(f"LLM {model.__class__.__name__} attempt {attempt+1} failed for {judge_role} - {criterion_id}: {e}")
+                    if attempt == 1: # On second failure, move to next model
+                        continue
             
-            Success Pattern: {details.get('success_pattern', 'N/A')}
-            Failure Pattern: {details.get('failure_pattern', 'N/A')}
-            
-            Evidence Collected by Detectives:
-            {evidence_text}
-            
-            Output a JudicialOpinion with:
-            - judge: {judge_role}
-            - criterion_id: {criterion_id}
-            - argument: Your specific reasoning based strictly on the role mission above.
-            - cited_evidence: Reference IDs (e.g. ['0', '2']) from the evidence list
-            - score: 1-5 (1=Critical Failure, 5=Excellence)
-            """
-            try:
-                opinion = structured_llm.invoke([
-                    SystemMessage(content=f"You are a member of the judicial bench: {judge_role}."),
-                    HumanMessage(content=prompt)
-                ])
-                # Ensure the identity matches in case of LLM drift
-                opinion.judge = judge_role
-                opinion.criterion_id = criterion_id
-                opinions.append(opinion)
-                break # Success, move to next dimension
-            except Exception as e:
-                print(f"LLM {model.__class__.__name__} failed for {judge_role} - {criterion_id}: {e}")
-                continue # Try next LLM
+            if opinion: # If we got an opinion from any attempt for this model, move to next dimension
+                break
         
         if not opinion:
             print(f"CRITICAL: All LLMs failed for {judge_role} on {criterion_id}. Using default pass.")
             opinions.append(JudicialOpinion(
                 judge=judge_role,
                 criterion_id=criterion_id,
-                argument=f"Automated consensus reached due to technical constraints. Evidence supports: {details.get('success_pattern', 'compliance')}",
-                cited_evidence=[],
+                reasoning=f"Automated consensus reached due to technical constraints. Evidence supports: {details.get('success_pattern', 'compliance')}",
+                citations=[],
                 score=4,  # Default to 4 when LLM unavailable: pass but not full marks (5 = full judicial review)
                 is_automated_fallback=True,
             ))
@@ -138,13 +143,13 @@ def chief_justice(state: AgentState) -> dict:
     """Node: Synthesizes opinions into final results with deterministic rules."""
     print("--- Chief Justice: Synthesis ---")
     opinions = state["opinions"]
-    rubric = state["rubric"]
+    rubric_dimensions = state.get("rubric_dimensions", [])
     
     results = []
     criterion_weights = []
     weighted_scores = []
 
-    for dimension in rubric.get("dimensions", []):
+    for dimension in rubric_dimensions:
         criterion_id = dimension["id"]
         details = dimension
         relevant_ops = [op for op in opinions if op.criterion_id == criterion_id]
@@ -178,7 +183,7 @@ def chief_justice(state: AgentState) -> dict:
             dissent += "Security Cap applied due to severe flags. "
             
         # 4. Rule: Evidence Overrule
-        if t_score > 4 and len(next((op.cited_evidence for op in relevant_ops if op.judge == "TechLead"), [])) == 0:
+        if t_score > 4 and len(next((op.citations for op in relevant_ops if op.judge == "TechLead"), [])) == 0:
             computed_score = min(computed_score, 3.5) # Penalty for high score without cited evidence
 
         # 5. Dissent check (variance > 2)
@@ -195,8 +200,8 @@ def chief_justice(state: AgentState) -> dict:
         # 6. Rule: Hallucination Penalty
         hallucinated_paths = state.get("hallucinated_paths", [])
         if hallucinated_paths:
-            # Check if any judge referenced a hallucinated path in their argument
-            if any(any(hp in op.argument for hp in hallucinated_paths) for op in relevant_ops):
+            # Check if any judge referenced a hallucinated path in their reasoning
+            if any(any(hp in op.reasoning for hp in hallucinated_paths) for op in relevant_ops):
                 computed_score = min(computed_score, 2.5)
                 dissent += "PENALTY: Opinion hallucinated non-existent files. "
         
@@ -208,8 +213,7 @@ def chief_justice(state: AgentState) -> dict:
         results.append(CriterionResult(
             dimension_id=criterion_id,
             dimension_name=details['name'],
-            final_score=computed_score,
-            verdict="Pass" if computed_score >= 3.0 else "Fail",
+            final_score=int(round(computed_score)),
             judge_opinions=relevant_ops,
             dissent_summary=dissent,
             remediation=f"Improve {details['name']} by addressing judge concerns." if computed_score < 3.0 else "No issues found."
@@ -229,16 +233,15 @@ def chief_justice(state: AgentState) -> dict:
         results.append(CriterionResult(
             dimension_id="global_security_veto",
             dimension_name="Global Security Veto",
-            final_score=1.0,
-            verdict="Fail",
+            final_score=1,
             judge_opinions=[],
             dissent_summary="Overall score capped at 2.0 due to critical security failure.",
             remediation="Address the Prosecutor's security veto immediately."
         ))
     
-    # Build a richer executive summary
-    passed = [r for r in results if r.verdict == "Pass"]
-    failed = [r for r in results if r.verdict == "Fail"]
+    # Derive pass/fail from final_score (CriterionResult has no verdict field per guide)
+    passed = [r for r in results if r.final_score >= 3]
+    failed = [r for r in results if r.final_score < 3]
     hallucinated_paths = state.get("hallucinated_paths", [])
     verified_paths = state.get("verified_paths", [])
     repo_manifest = state.get("repo_manifest", [])
