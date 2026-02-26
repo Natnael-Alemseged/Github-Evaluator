@@ -15,7 +15,7 @@ if "GROQ_API_KEY" in os.environ:
 # 2. OpenRouter (Free models)
 if "OPENROUTER_KEY" in os.environ:
     llms.append(ChatOpenAI(
-        model="meta-llama/llama-3.1-8b-instruct:free",
+        model="meta-llama/llama-3.2-3b-instruct:free",
         openai_api_key=os.environ["OPENROUTER_KEY"],
         openai_api_base="https://openrouter.ai/api/v1",
         default_headers={
@@ -28,7 +28,7 @@ if "OPENROUTER_KEY" in os.environ:
 # 3. SambaNova (Fast inference)
 if "SAMBANOVA_KEY" in os.environ:
     llms.append(ChatOpenAI(
-        model="Meta-Llama-3.1-8B-Instruct",
+        model="Meta-Llama-3.2-3B-Instruct",
         openai_api_key=os.environ["SAMBANOVA_KEY"],
         openai_api_base="https://api.sambanova.ai/v1",
         temperature=0
@@ -61,13 +61,11 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
     # Build role_instructions once per judge call, outside the hot LLM/dimension loop
     role_instructions = {
         "Prosecutor": """
-            Your goal is to FIND EVERY CRITICAL FAILURE. You are a 'Trust No One' forensic auditor.
-            - MISSION: Be extremely adversarial. Look for gaps, security flaws, laziness, and 'Vibe Coding' (assertions without proof).
-            - HEURISTIC: If logic is linear where parallelism was requested, FAIL IT (Score 1).
-            - HEURISTIC: If data is overwritten due to lack of reducers, FAIL IT (Score 1).
-            - HEURISTIC: If LLM output is parsed with regex instead of .with_structured_output(), FAIL IT (Score 1).
-            - Deduct heavily for missing error handling or vague evidence citations.
-            - You represent the 'Gaps' in the system. Be the developer's worst nightmare.
+            Your goal is to BE ADVERSARIAL BUT FACTUALLY ACCURATE.
+            - MISSION: Look for gaps and flaws. HOWEVER, you must respect DETECTIVE EVIDENCE.
+            - Rule of Evidence: If a detective explicitly states '[VERIFIED]' or 'Found ...', you MUST acknowledge that fact.
+            - Do NOT hallucinate failures that flatly contradict evidence (e.g. claiming code is linear when evidence shows parallelism).
+            - Focus your 'Prosecution' on where evidence is genuinely weak or documentation is thin.
         """,
         "Defense": """
             Your goal is to ADVOCATE for the developer. You are a pragmatic, forgiving defender.
