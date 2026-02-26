@@ -15,7 +15,7 @@ if "GROQ_API_KEY" in os.environ:
 # 2. OpenRouter (Free models)
 if "OPENROUTER_KEY" in os.environ:
     llms.append(ChatOpenAI(
-        model="google/gemini-2.0-pro-exp-02-05:free",
+        model="meta-llama/llama-3.1-8b-instruct:free",
         openai_api_key=os.environ["OPENROUTER_KEY"],
         openai_api_base="https://openrouter.ai/api/v1",
         default_headers={
@@ -25,10 +25,10 @@ if "OPENROUTER_KEY" in os.environ:
         temperature=0
     ))
 
-# 4. SambaNova (Fast inference)
+# 3. SambaNova (Fast inference)
 if "SAMBANOVA_KEY" in os.environ:
     llms.append(ChatOpenAI(
-        model="Meta-Llama-3.3-70B-Instruct", # Updating to Llama 3.3
+        model="Meta-Llama-3.1-8B-Instruct",
         openai_api_key=os.environ["SAMBANOVA_KEY"],
         openai_api_base="https://api.sambanova.ai/v1",
         temperature=0
