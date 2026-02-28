@@ -208,7 +208,15 @@ def doc_analyst(state: AgentState) -> dict:
     print("--- Detective: DocAnalyst ---")
     from src.tools.doc_tools import ingest_pdf, query_vector_store
 
+    repo_path = state.get("repo_path")
     pdf_path = state.get("pdf_path") or "standard.pdf"
+    
+    # Try finding the PDF in the cloned repository first
+    if repo_path and not os.path.exists(pdf_path):
+        repo_pdf = os.path.join(repo_path, pdf_path)
+        if os.path.exists(repo_pdf):
+            pdf_path = repo_pdf
+    
     evidences = []
 
     try:
