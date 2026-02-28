@@ -57,114 +57,133 @@ def get_detective_llms():
     ))
     return llms
 
+def repo_cloner(state: AgentState) -> dict:
+    """Node: Clones the repository once and stores path in state."""
+    print("--- Loader: RepoCloner ---")
+    repo_url = state["repo_url"]
+    try:
+        # We manually manage the sandbox lifecycle
+        sandbox = RepoSandbox(repo_url)
+        repo_path = sandbox.__enter__()
+        all_files = get_all_repo_files(repo_path)
+        return {
+            "repo_path": repo_path,
+            "repo_manifest": all_files
+        }
+    except Exception as e:
+        print(f"RepoCloner failed: {e}")
+        return {"repo_path": None, "repo_manifest": []}
+
 def repo_investigator(state: AgentState) -> dict:
     """Node: Investigates the repository structure and code."""
     print("--- Detective: RepoInvestigator ---")
-    repo_url = state["repo_url"]
+    repo_path = state.get("repo_path")
+    if not repo_path:
+        return {"evidences": {"repo_investigator": [Evidence(
+            detective_name="RepoInvestigator",
+            goal="Analyze repo", found=False, content="No repo_path in state", location="None", rationale="Cloning failed", confidence=0.0
+        )]}}
     
     evidences = []
     try:
-        with RepoSandbox(repo_url) as repo_path:
-            print(f"--- RepoInvestigator Analyzing: {repo_path} ---")
-            
-            # 1) Analysis of Graph Structure
-            graph_analysis = analyze_graph_structure(repo_path)
-            evidences.append(Evidence(
-                detective_name="RepoInvestigator",
-                goal="Verify fan-out/fan-in and StateGraph structure",
-                found="StateGraph" in graph_analysis,
-                content=graph_analysis,
-                location="src/graph.py",
-                rationale="AST analysis of graph definition file.",
-                confidence=1.0
-            ))
-            
-            # 2) History Forensics
-            history_analysis = extract_git_history(repo_path)
-            evidences.append(Evidence(
-                detective_name="RepoInvestigator",
-                goal="Retrieve git history for effort and atomic commits",
-                found=len(history_analysis) > 50,
-                content=history_analysis,
-                location="Git Log",
-                rationale="Used to gauge developer effort and commit quality.",
-                confidence=1.0
-            ))
-            
-            # 3) Git Progression
-            timeline_analysis = analyze_git_progression(history_analysis)
-            evidences.append(Evidence(
-                detective_name="RepoInvestigator",
-                goal="Verify logical setup -> tools -> graph progression",
-                found="Timeline reconstruction:" in timeline_analysis,
-                content=timeline_analysis,
-                location="Git History Analytics",
-                rationale="Analyzes temporal development stages.",
-                confidence=1.0
-            ))
+        print(f"--- RepoInvestigator Analyzing: {repo_path} ---")
+        
+        # 1) Analysis of Graph Structure
+        graph_analysis = analyze_graph_structure(repo_path)
+        evidences.append(Evidence(
+            detective_name="RepoInvestigator",
+            goal="Verify fan-out/fan-in and StateGraph structure",
+            found="StateGraph" in graph_analysis,
+            content=graph_analysis,
+            location="src/graph.py",
+            rationale="AST analysis of graph definition file.",
+            confidence=1.0
+        ))
+        
+        # 2) History Forensics
+        history_analysis = extract_git_history(repo_path)
+        evidences.append(Evidence(
+            detective_name="RepoInvestigator",
+            goal="Retrieve git history for effort and atomic commits",
+            found=len(history_analysis) > 50,
+            content=history_analysis,
+            location="Git Log",
+            rationale="Used to gauge developer effort and commit quality.",
+            confidence=1.0
+        ))
+        
+        # 3) Git Progression
+        timeline_analysis = analyze_git_progression(history_analysis)
+        evidences.append(Evidence(
+            detective_name="RepoInvestigator",
+            goal="Verify logical setup -> tools -> graph progression",
+            found="Timeline reconstruction:" in timeline_analysis,
+            content=timeline_analysis,
+            location="Git History Analytics",
+            rationale="Analyzes temporal development stages.",
+            confidence=1.0
+        ))
 
-            # 4) State Management
-            state_analysis = analyze_state_management(repo_path)
-            evidences.append(Evidence(
-                detective_name="RepoInvestigator",
-                goal="Verify Pydantic models and Annotated reducers in state",
-                found="Pydantic BaseModel found" in state_analysis,
-                content=state_analysis,
-                location="src/state.py",
-                rationale="Keyword scan for State Management Rigor.",
-                confidence=1.0
-            ))
+        # 4) State Management
+        state_analysis = analyze_state_management(repo_path)
+        evidences.append(Evidence(
+            detective_name="RepoInvestigator",
+            goal="Verify Pydantic models and Annotated reducers in state",
+            found="Pydantic BaseModel found" in state_analysis,
+            content=state_analysis,
+            location="src/state.py",
+            rationale="Keyword scan for State Management Rigor.",
+            confidence=1.0
+        ))
 
-            # 5) Structured Output
-            output_analysis = analyze_structured_output(repo_path)
-            evidences.append(Evidence(
-                detective_name="RepoInvestigator",
-                goal="Verify .with_structured_output() in judges",
-                found="Uses '.with_structured_output()'" in output_analysis,
-                content=output_analysis,
-                location="src/nodes/judges.py",
-                rationale="Keyword scan for Structured Output enforcement.",
-                confidence=1.0
-            ))
+        # 5) Structured Output
+        output_analysis = analyze_structured_output(repo_path)
+        evidences.append(Evidence(
+            detective_name="RepoInvestigator",
+            goal="Verify .with_structured_output() in judges",
+            found="Uses '.with_structured_output()'" in output_analysis,
+            content=output_analysis,
+            location="src/nodes/judges.py",
+            rationale="Keyword scan for Structured Output enforcement.",
+            confidence=1.0
+        ))
 
-            # 6) Judicial Nuance
-            nuance_analysis = analyze_judicial_nuance(repo_path)
-            evidences.append(Evidence(
-                detective_name="RepoInvestigator",
-                goal="Verify distinct persona instructions",
-                found="Three distinct personas defined" in nuance_analysis,
-                content=nuance_analysis,
-                location="src/nodes/judges.py",
-                rationale="Keyword scan for persona-specific system prompt instructions.",
-                confidence=1.0
-            ))
-            
-            # 7) Chief Justice Synthesis
-            justice_analysis = analyze_chief_justice_synthesis(repo_path)
-            evidences.append(Evidence(
-                detective_name="RepoInvestigator",
-                goal="Verify Chief Justice deterministic synthesis logic",
-                found="deterministic Python logic" in justice_analysis,
-                content=justice_analysis,
-                location="src/nodes/justice.py",
-                rationale="Deterministic scan for specific Python synthesis rules.",
-                confidence=1.0
-            ))
+        # 6) Judicial Nuance
+        nuance_analysis = analyze_judicial_nuance(repo_path)
+        evidences.append(Evidence(
+            detective_name="RepoInvestigator",
+            goal="Verify distinct persona instructions",
+            found="Three distinct personas defined" in nuance_analysis,
+            content=nuance_analysis,
+            location="src/nodes/judges.py",
+            rationale="Keyword scan for persona-specific system prompt instructions.",
+            confidence=1.0
+        ))
+        
+        # 7) Chief Justice Synthesis
+        justice_analysis = analyze_chief_justice_synthesis(repo_path)
+        evidences.append(Evidence(
+            detective_name="RepoInvestigator",
+            goal="Verify Chief Justice deterministic synthesis logic",
+            found="deterministic Python logic" in justice_analysis,
+            content=justice_analysis,
+            location="src/nodes/justice.py",
+            rationale="Deterministic scan for specific Python synthesis rules.",
+            confidence=1.0
+        ))
 
-            # 8) Safe Tool Engineering
-            security_analysis = analyze_security_features(repo_path)
-            evidences.append(Evidence(
-                detective_name="RepoInvestigator",
-                goal="Scan for secure tool engineering and identify 'failure_patterns'",
-                found="Uses 'tempfile' for isolated sandboxing" in security_analysis,
-                content=security_analysis + "\nVerification: Checking for lack of sandboxing or insecure subprocess calls as per failure_pattern.",
-                location="src/tools/repo_tools.py",
-                rationale="Forensic scan for both compliance and anti-patterns in tool engineering.",
-                confidence=1.0
-            ))
-            
-            all_files = get_all_repo_files(repo_path)
-            
+        # 8) Safe Tool Engineering
+        security_analysis = analyze_security_features(repo_path)
+        evidences.append(Evidence(
+            detective_name="RepoInvestigator",
+            goal="Scan for secure tool engineering and identify 'failure_patterns'",
+            found="Uses 'tempfile' for isolated sandboxing" in security_analysis,
+            content=security_analysis + "\nVerification: Checking for lack of sandboxing or insecure subprocess calls as per failure_pattern.",
+            location="src/tools/repo_tools.py",
+            rationale="Forensic scan for both compliance and anti-patterns in tool engineering.",
+            confidence=1.0
+        ))
+        all_files = get_all_repo_files(repo_path)
     except Exception as e:
         print(f"RepoInvestigator failed: {e}")
         evidences.append(Evidence(
@@ -180,7 +199,7 @@ def repo_investigator(state: AgentState) -> dict:
     
     return {
         "evidences": {"repo_investigator": evidences},
-        "repo_manifest": all_files,
+        "repo_manifest": state.get("repo_manifest", []),
         "hallucinated_paths": []
     }
 
@@ -234,7 +253,8 @@ def vision_inspector(state: AgentState) -> dict:
     """Node: Vision analysis of architectural diagrams."""
     print("--- Detective: VisionInspector ---")
     pdf_path = state.get("pdf_path") or ""
-    diag_path = "architecture.png"
+    repo_path = state.get("repo_path")
+    diag_path = os.path.join(repo_path, "architecture.png") if repo_path else "architecture.png"
     image_paths = extract_images_from_pdf(pdf_path) if pdf_path and os.path.exists(pdf_path) else []
     if not image_paths and os.path.exists(diag_path):
         image_paths = [diag_path]

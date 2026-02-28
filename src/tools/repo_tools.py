@@ -55,11 +55,15 @@ class RepoSandbox:
             self._temp_ctx.__exit__(None, None, None)
             raise RuntimeError(f"Git clone failed: {e.stderr}") from e
         
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def cleanup(self):
+        """Manually trigger cleanup of the sandbox."""
         if self._temp_ctx is not None:
-            self._temp_ctx.__exit__(exc_type, exc_val, exc_tb)
+            self._temp_ctx.__exit__(None, None, None)
             print("Cleaned up git sandbox")
-        return False  # do not suppress exceptions
+            
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # We allow manual cleanup now
+        return False
 
 def extract_git_history(repo_path: str) -> str:
     """Extract commit history from the cloned repository using rubric format."""

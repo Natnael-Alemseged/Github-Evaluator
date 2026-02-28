@@ -5,7 +5,7 @@ load_dotenv()
 
 from langgraph.graph import StateGraph, START, END
 from src.state import AgentState
-from src.nodes.detectives import repo_investigator, doc_analyst, vision_inspector
+from src.nodes.detectives import repo_cloner, repo_investigator, doc_analyst, vision_inspector
 from src.nodes.judges import prosecutor, defense, tech_lead
 from src.nodes.justice import chief_justice_node
 
@@ -160,6 +160,7 @@ workflow = StateGraph(AgentState)
 
 # Add nodes
 workflow.add_node("load_rubric", load_rubric)
+workflow.add_node("repo_cloner", repo_cloner)
 workflow.add_node("repo_investigator", repo_investigator)
 workflow.add_node("doc_analyst", doc_analyst)
 workflow.add_node("vision_inspector", vision_inspector)
@@ -172,12 +173,14 @@ workflow.add_node("chief_justice", chief_justice_node)
 workflow.add_node("report_writer", report_writer)
 
 # Define edges
+# Sequential Setup
 workflow.add_edge(START, "load_rubric")
+workflow.add_edge("load_rubric", "repo_cloner")
 
 # Fan-out to Detectives
-workflow.add_edge("load_rubric", "repo_investigator")
-workflow.add_edge("load_rubric", "doc_analyst")
-workflow.add_edge("load_rubric", "vision_inspector")
+workflow.add_edge("repo_cloner", "repo_investigator")
+workflow.add_edge("repo_cloner", "doc_analyst")
+workflow.add_edge("repo_cloner", "vision_inspector")
 
 # Fan-in to Aggregator
 workflow.add_edge("repo_investigator", "evidence_aggregator")
