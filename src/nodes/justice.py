@@ -246,12 +246,13 @@ def chief_justice_node(state: AgentState) -> dict:
             criterion_id, d_score, computed_score, dissent, all_evidence, defense_op
         )
 
-        # Dissent requirement: every criterion with variance > 2 must have dissent summary
-        if variance > 2 and not any("variance" in d for d in dissent):
-            dissent.append(
-                synthesis_rules.get("dissent_requirement", "Score variance > 2; dissent summarized.")
-            )
-        if variance <= 2 and not dissent:
+        # Dissent requirement: every criterion with variance > 2 must have a meaningful dissent summary
+        if variance > 2:
+            dissent_reasons = []
+            for op in relevant_ops:
+                dissent_reasons.append(f"{op.judge} (score {op.score}): {op.argument[:100]}...")
+            dissent.append(f"DISSENT SUMMARY: Significant variance ({variance}) detected. " + " | ".join(dissent_reasons))
+        elif not dissent:
             dissent.append("Consensus reached.")
 
         # Hallucination penalty
@@ -269,11 +270,20 @@ def chief_justice_node(state: AgentState) -> dict:
             dissent.append("PROSECUTOR FLAG: Potential linear flow or orchestration weakness.")
 
         final_score = max(1, min(5, int(round(computed_score))))
-        remediation = (
-            f"Improve {dimension_name} by addressing judge concerns and evidence gaps."
-            if final_score < 3
-            else "No issues found."
-        )
+        
+        # PROSECUTOR FLOOR: Prevent 'grade inflation' if Prosecutor flags major failure
+        if p_score <= 2:
+            strict_limit = p_score + 1
+            if final_score > strict_limit:
+                final_score = strict_limit
+                dissent.append(f"PROSECUTOR FLOOR: Final score capped at {strict_limit} due to Prosecutor's adversarial finding (score {p_score}).")
+
+        # Concrete remediation: If score < 5, try to be specific
+        if final_score < 5:
+            worst_judge = min(relevant_ops, key=lambda x: x.score)
+            remediation = f"Address concern from {worst_judge.judge}: {worst_judge.argument[:150]}..."
+        else:
+            remediation = "No issues found."
 
         results.append(
             CriterionResult(
@@ -320,52 +330,49 @@ def chief_justice_node(state: AgentState) -> dict:
     ]
     if failed:
         summary_lines.append(f"Critical Failures: {', '.join(r.dimension_name for r in failed)}")
-    all_fallback = opinions and all(
-        getattr(op, "is_automated_fallback", False) for op in opinions
-    )
-    if all_fallback:
-        summary_lines.append(
-            "Note: All scores from automated fallback (LLM unavailable). Run with APIs for full judicial review."
-        )
+    
     hallucinated_paths = state.get("hallucinated_paths", []) or []
     verified_paths = state.get("verified_paths", []) or []
     repo_manifest = state.get("repo_manifest", []) or []
-    if hallucinated_paths:
-        summary_lines.append(f"Hallucinated paths: {len(hallucinated_paths)} (cited but not in repo).")
-    else:
-        summary_lines.append("Evidence integrity: No hallucinated paths. Cited files verified.")
-    summary_lines.append(f"Repo: {len(repo_manifest)} files; {len(verified_paths)} cross-referenced.")
+    
+    summary_lines.append(f"Evidence Integrity: {len(hallucinated_paths)} hallucinations, {len(verified_paths)} verified files.")
     executive_summary = "\n".join(summary_lines)
 
-    remediation_plan_intro = "\n".join(
-        f"- {r.remediation}"
-        for r in results
-        if r.remediation and r.remediation != "No issues found."
-    ) or "No remediation needed."
+    # Compile criterion-level remediation for the LLM
+    detailed_remediation_context = "\n".join(
+        f"- {r.dimension_name} (Score {r.final_score}): {r.remediation}"
+        for r in results if r.final_score < 5
+    ) or "Everything is optimal."
 
     # Metacognition: LLM Polish for Executive Summary and Remediation Plan
     print("  [Justice] LLM Synthesis starting (Layer 3)...")
-    time.sleep(1.0 + random.uniform(0.5, 2.0)) # Give some breather after judges
+    time.sleep(1.0)
     
-    from src.state import JusticeOutput # Import for structured output
+    from src.state import JusticeOutput 
     justice_llms = get_justice_llm()
     executive_summary_final = executive_summary
-    remediation_plan_final = remediation_plan_intro
+    remediation_plan_final = detailed_remediation_context
 
     prompt = f"""
-    You are the Chief Justice. Review the deterministic summary and remediation plan.
-    Polish them into a professional, cohesive, and insightful narrative.
+    You are the Chief Justice. Review the deterministic summary and the detailed remediation context.
+    Polish them into a professional, cohesive, and insightful narrative report.
     
-    Deterministic Summary:
+    CRITICAL REQUIREMENTS:
+    1. The Executive Summary must be a high-level narrative for stakeholders.
+    2. The Remediation Plan must contain CONCRETE, FILE-LEVEL steps (Actionable Items).
+    3. Refer to specific file paths from the Verified Files list if applicable.
+    
+    Deterministic Stats:
     {executive_summary}
     
-    Initial Remediation:
-    {remediation_plan_intro}
+    Verified Files: {", ".join(verified_paths[:20])} 
+    
+    Detailed Remediation Context:
+    {detailed_remediation_context}
     """
 
     for model in justice_llms:
-        # Small delay between fallback attempts
-        time.sleep(random.uniform(0.5, 1.5))
+        time.sleep(1.0)
         model_name = getattr(model, "model_name", getattr(model, "model", "Unknown"))
         try:
             structured_llm = model.with_structured_output(JusticeOutput)
@@ -373,7 +380,7 @@ def chief_justice_node(state: AgentState) -> dict:
                 continue
                 
             resp = structured_llm.invoke([
-                SystemMessage(content="You are the Chief Justice. Synthesize the final audit report into a professional narrative."),
+                SystemMessage(content="You are the Chief Justice. Produce a structured audit report with executive summary and concrete file-level remediation steps."),
                 HumanMessage(content=prompt)
             ])
             
