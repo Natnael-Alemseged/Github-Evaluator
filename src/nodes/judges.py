@@ -231,6 +231,10 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
             # Post-process to ensure IDs are correct
             for op in batch_resp.opinions:
                 op.judge = judge_role
+                
+            # Print some opinions for visibility
+            for op in batch_resp.opinions[:2]:
+                print(f"  [{judge_role} Verdict] {op.criterion_id}: Score {op.score}")
             
             return batch_resp.opinions
             
