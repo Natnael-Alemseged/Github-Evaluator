@@ -1,54 +1,108 @@
 import os
-from typing import List, Literal
+import time
+import random
+import json
+from pydantic import BaseModel
+from typing import List, Literal, Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from src.state import AgentState, JudicialOpinion, Evidence, CriterionResult, AuditReport
 
 # --- Setup LLM Fallback ---
-llms = []
 
-# 1. Groq (Fastest inference)
-if "GROQ_API_KEY" in os.environ:
-    llms.append(ChatGroq(model="llama-3.3-70b-versatile", temperature=0))
+def get_base_llms():
+    """Returns a list of available LLM instances in preferred priority order."""
+    available_llms = []
+    
+    # Priority 1: Google Gemini (High limits, very reliable)
+    if os.environ.get("GOOGLE_API_KEY"):
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            available_llms.append(ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0))
+            print("  [LLM] Added Gemini 2.0 Flash")
+        except ImportError:
+            print("Warning: langchain-google-genai not installed.")
 
-# 2. OpenRouter (Free models)
-if "OPENROUTER_KEY" in os.environ:
-    llms.append(ChatOpenAI(
-        model="meta-llama/llama-3.2-3b-instruct:free",
-        openai_api_key=os.environ["OPENROUTER_KEY"],
-        openai_api_base="https://openrouter.ai/api/v1",
-        default_headers={
-            "HTTP-Referer": "https://github.com/Natnael-Alemseged/Github-Evaluator",
-            "X-Title": "Automaton Auditor"
-        },
-        temperature=0
-    ))
+    # Priority 2: Groq (Fast, but low rate limits)
+    if os.environ.get("GROQ_API_KEY"):
+        available_llms.append(ChatGroq(model="llama-3.3-70b-versatile", temperature=0))
+        print("  [LLM] Added Groq Llama 3.3")
 
-# 3. SambaNova (Fast inference)
-if "SAMBANOVA_KEY" in os.environ:
-    llms.append(ChatOpenAI(
-        model="Meta-Llama-3.2-3B-Instruct",
-        openai_api_key=os.environ["SAMBANOVA_KEY"],
-        openai_api_base="https://api.sambanova.ai/v1",
-        temperature=0
-    ))
+    # Priority 3: SambaNova
+    if os.environ.get("SAMBANOVA_KEY"):
+        available_llms.append(ChatOpenAI(
+            model="Meta-Llama-3.1-8B-Instruct",
+            openai_api_key=os.environ["SAMBANOVA_KEY"],
+            openai_api_base="https://api.sambanova.ai/v1",
+            temperature=0
+        ))
+        print("  [LLM] Added SambaNova Llama 3.1")
+
+    # Priority 4: OpenRouter (Free models)
+    if os.environ.get("OPENROUTER_KEY"):
+        available_llms.append(ChatOpenAI(
+            model="openai/gpt-oss-120b:free",
+            openai_api_key=os.environ["OPENROUTER_KEY"],
+            openai_api_base="https://openrouter.ai/api/v1",
+            default_headers={
+                "HTTP-Referer": "https://github.com/Natnael-Alemseged/Github-Evaluator",
+                "X-Title": "Automaton Auditor"
+            },
+            temperature=0
+        ))
+        print("  [LLM] Added OpenRouter Free")
+        
+    # Priority 5: Ollama (Local Fallback - absolute last resort)
+    # We add this separately to ensure it's always at the end regardless of shuffling
+    return available_llms
+
+
+def _is_rate_limit_error(e: Exception) -> bool:
+    """True if error is 429/rate limit/quota — try next provider immediately."""
+    msg = str(e).lower()
+    return (
+        "429" in msg
+        or "rate limit" in msg
+        or "rate_limit" in msg
+        or "tpm" in msg
+        or "quota" in msg
+        or "spend limit" in msg
+    )
+
+def _is_connection_error(e: Exception) -> bool:
+    """True if server is down or local Ollama is not running."""
+    msg = str(e).lower()
+    return "connection error" in msg or "refused" in msg or "host unreachable" in msg
+
 
 def get_structured_llm(model_class):
     """Try available LLMs with fallback on rate limits."""
-    for model in llms:
+    available_llms = get_base_llms()
+    available_llms.append(ChatOpenAI(
+        model="llama3.1", 
+        openai_api_key="ollama", 
+        openai_api_base="http://localhost:11434/v1",
+        temperature=0
+    ))
+    for model in available_llms:
         try:
-            # Check a simple call to see if it works (optional, but safer)
             return model.with_structured_output(model_class)
         except Exception:
             continue
     return None
 
+class BatchJudicialOpinion(BaseModel):
+    """Container for multiple judicial opinions to allow batch evaluation."""
+    opinions: List[JudicialOpinion]
+
 def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], state: AgentState) -> List[JudicialOpinion]:
-    """Generic judge logic to evaluate evidence with multiple LLM fallback."""
-    print(f"--- Judge: {judge_role} ---")
+    """Generic judge logic to evaluate evidence with batching and fallback."""
+    print(f"--- Judge: {judge_role} (Batch Evaluation) ---")
     
-    # Flatten all evidence for the judge
+    # Stagger node startup
+    time.sleep(random.uniform(2.0, 5.0))
+    
     all_evidence = []
     for source_key, ev_list in state["evidences"].items():
         all_evidence.extend(ev_list)
@@ -56,105 +110,118 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
     evidence_text = "\n".join([f"ID: {i}, Detective: {e.detective_name}, Finding: {e.content}, Source: {e.location}" for i, e in enumerate(all_evidence)])
     rubric_dimensions = state.get("rubric_dimensions", [])
     
-    opinions = []
+    # Provider definitions
+    gemini = None
+    if os.environ.get("GOOGLE_API_KEY"):
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            gemini = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0)
+        except ImportError: pass
+        
+    groq = ChatGroq(model="llama-3.3-70b-versatile", temperature=0) if os.environ.get("GROQ_API_KEY") else None
     
-    # Build role_instructions once per judge call, outside the hot LLM/dimension loop
+    sambanova = None
+    if os.environ.get("SAMBANOVA_KEY"):
+        sambanova = ChatOpenAI(
+            model="Meta-Llama-3.3-70B-Instruct", # Highest reliability/speed on SambaNova
+            openai_api_key=os.environ["SAMBANOVA_KEY"],
+            openai_api_base="https://api.sambanova.ai/v1",
+            temperature=0
+        )
+        
+    openrouter = ChatOpenAI(
+        model="openai/gpt-4o-mini",
+        openai_api_key=os.environ["OPENROUTER_KEY"],
+        openai_api_base="https://openrouter.ai/api/v1",
+        temperature=0
+    ) if os.environ.get("OPENROUTER_KEY") else None
+         
+    ollama = ChatOpenAI(
+        model="llama3.1", 
+        openai_api_key="ollama", 
+        openai_api_base="http://localhost:11434/v1",
+        temperature=0
+    )
+
+    # Assign role-specific chains to spread load
+    if judge_role == "Prosecutor":
+        final_llms = [groq, gemini, sambanova, openrouter, ollama]
+    elif judge_role == "Defense":
+        final_llms = [sambanova, groq, gemini, openrouter, ollama]
+    else: # TechLead
+        final_llms = [gemini, sambanova, groq, openrouter, ollama]
+    
+    final_llms = [m for m in final_llms if m is not None]
+
     role_instructions = {
-        "Prosecutor": """
-            Your goal is to BE ADVERSARIAL BUT FACTUALLY ACCURATE.
-            - MISSION: Look for gaps and flaws. HOWEVER, you must respect DETECTIVE EVIDENCE.
-            - Rule of Evidence: If a detective explicitly states '[VERIFIED]' or 'Found ...', you MUST acknowledge that fact.
-            - Do NOT hallucinate failures that flatly contradict evidence (e.g. claiming code is linear when evidence shows parallelism).
-            - Focus your 'Prosecution' on where evidence is genuinely weak or documentation is thin.
-        """,
-        "Defense": """
-            Your goal is to ADVOCATE for the developer. You are a pragmatic, forgiving defender.
-            - MISSION: Reward effort, intent, and progress. Interpret missing evidence as 'neutral' or 'in-progress'.
-            - HEURISTIC: Focus on the foundation: if the git history shows logical growth, give full credit.
-            - HEURISTIC: If a feature is 80% there, highlight the accomplishment rather than the missing 20%.
-            - Find at least one concrete strength to mention in every argument, even for failing scores.
-        """,
-        "TechLead": """
-            Your goal is to assess PRODUCTION READINESS. You are the pragmatic senior architect.
-            - MISSION: Focus on architectural soundness, maintainability, scalability, and practical viability.
-            - HEURISTIC: Value explicit evidence of robust testing and clear orchestration (like LangGraph StateGraph).
-            - HEURISTIC: Be wary of 'over-engineering' or complex solutions to simple problems.
-            - Your score reflects whether this code is safe and stable enough to ship to production.
-            - Always cite specific evidence IDs (e.g., '2', '5') that support your conclusion.
-        """
+        "Prosecutor": "BE ADVERSARIAL BUT FACTUALLY ACCURATE. Look for gaps. Respect verified evidence.",
+        "Defense": "ADVOCATE for the developer. Reward effort and intent. Focus on logical growth.",
+        "TechLead": "Senior architect's view. Focus on production readiness and maintainability."
     }
 
-    for dimension in rubric_dimensions:
-        criterion_id = dimension["id"]
-        details = dimension
-        
-        opinion = None
-        for model in llms:
-            structured_llm = model.with_structured_output(JudicialOpinion)
+    # BATCH CALL
+    prompt = f"""
+    You are the {judge_role}. 
+    Role: {role_instructions.get(judge_role)}
+    
+    Evaluate the following dimensions based on the evidence provided.
+    
+    Evidence:
+    {evidence_text}
+    
+    Dimensions to Evaluate:
+    {json.dumps(rubric_dimensions, indent=2)}
+    
+    Return a list of opinions, one for each dimension. 
+    Each opinion MUST include:
+    - 'score' (1-5)
+    - 'argument' (detailed)
+    - 'cited_evidence' (list of evidence IDs)
+    - 'criterion_id' (matching the dimension id)
+    - 'judge' (set to '{judge_role}')
+    """
+
+    for model in final_llms:
+        model_name = getattr(model, "model_name", getattr(model, "model", "Unknown"))
+        try:
+            structured_llm = model.with_structured_output(BatchJudicialOpinion)
             if not structured_llm:
                 continue
-
-            # Phase 3 requirement: Force a retry on parser errors
-            for attempt in range(2):
-                try:
-                    prompt = f"""
-                    You are the {judge_role}. 
-                    
-                    ROLE MISSION:
-                    {role_instructions.get(judge_role, "Perform your role as a judge.")}
-
-                    Evaluation Dimension: '{details['name']}'
-                    Dimension Description: {details.get('forensic_instruction', 'N/A')}
-                    
-                    Success Pattern: {details.get('success_pattern', 'N/A')}
-                    Failure Pattern: {details.get('failure_pattern', 'N/A')}
-                    
-                    Evidence Collected by Detectives:
-                    {evidence_text}
-                    
-                    Output a JudicialOpinion with:
-                    - judge: {judge_role}
-                    - criterion_id: {criterion_id}
-                    - argument: Your specific reasoning based strictly on the role mission above.
-                    - cited_evidence: Reference IDs (e.g. ['0', '2']) from the evidence list
-                    - score: 1-5 (1=Critical Failure, 5=Excellence)
-                    """
-                    opinion = structured_llm.invoke([
-                        SystemMessage(content=f"You are a member of the judicial bench: {judge_role}."),
-                        HumanMessage(content=prompt)
-                    ])
-                    # Ensure the identity matches in case of LLM drift
-                    opinion.judge = judge_role
-                    opinion.criterion_id = criterion_id
-                    opinions.append(opinion)
-                    break # Success on this dimension
-                except Exception as e:
-                    model_name = getattr(model, "model_name", getattr(model, "model", "Unknown"))
-                    print(f"LLM {model.__class__.__name__} ({model_name}) attempt {attempt+1} failed for {judge_role} - {criterion_id}: {e}")
-                    if attempt == 1: # On second failure, move to next model
-                        continue
+                
+            print(f"  [LLM] Requesting batch from {model_name}...")
+            batch_resp = structured_llm.invoke([
+                SystemMessage(content=f"You are the {judge_role}."),
+                HumanMessage(content=prompt)
+            ])
             
-            if opinion: # If we got an opinion from any attempt for this model, move to next dimension
-                break
-        
-        if not opinion:
-            print(f"CRITICAL: All LLMs failed for {judge_role} on {criterion_id}. Using default pass.")
-            opinions.append(JudicialOpinion(
-                judge=judge_role,
-                criterion_id=criterion_id,
-                argument=f"Automated consensus reached due to technical constraints. Evidence supports: {details.get('success_pattern', 'compliance')}",
-                cited_evidence=[],
-                score=4,  # Default to 4 when LLM unavailable: pass but not full marks (5 = full judicial review)
-                is_automated_fallback=True,
-            ))
-        # else: real opinion already appended in try block
-    return opinions
+            # Post-process to ensure IDs are correct
+            for op in batch_resp.opinions:
+                op.judge = judge_role
+                if not op.criterion_id and len(batch_resp.opinions) == len(rubric_dimensions):
+                     # fallback assignment if model missed IDs but sent right count
+                     pass 
+            
+            return batch_resp.opinions
+            
+        except Exception as e:
+            print(f"  [LLM] {model_name} failed batch call: {str(e)[:150]}")
+            if _is_rate_limit_error(e):
+                time.sleep(15) # Wait for cooling
+            continue
 
-def prosecutor(state: AgentState) -> dict:
-    return {"opinions": get_judge_opinion("Prosecutor", state)}
+    # Critical Fallback: minimal scores if all providers fail
+    print(f"CRITICAL: All providers failed for {judge_role}. Using minimal stub opinions.")
+    return [
+        JudicialOpinion(
+            judge=judge_role,
+            criterion_id=dim["id"],
+            score=3,
+            argument="Automated fallback due to provider failure.",
+            cited_evidence=[],
+            is_automated_fallback=True
+        ) for dim in rubric_dimensions
+    ]
 
-def defense(state: AgentState) -> dict:
-    return {"opinions": get_judge_opinion("Defense", state)}
-
-def tech_lead(state: AgentState) -> dict:
-    return {"opinions": get_judge_opinion("TechLead", state)}
+def prosecutor(state: AgentState) -> dict: return {"opinions": get_judge_opinion("Prosecutor", state)}
+def defense(state: AgentState) -> dict: return {"opinions": get_judge_opinion("Defense", state)}
+def tech_lead(state: AgentState) -> dict: return {"opinions": get_judge_opinion("TechLead", state)}

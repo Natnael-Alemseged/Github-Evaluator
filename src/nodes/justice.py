@@ -6,7 +6,13 @@ Output: AuditReport consumed by report_writer → Markdown file (Executive Summa
 
 import json
 import os
+import time
+import random
 from typing import Dict, List, Optional, Tuple
+
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 
 from src.state import (
     AgentState,
@@ -15,6 +21,35 @@ from src.state import (
     Evidence,
     JudicialOpinion,
 )
+
+def get_justice_llm():
+    """Returns LLMs for Layer 3 (Justice). Primary: SambaNova, Fallback: OpenRouter."""
+    llms = []
+    if os.environ.get("SAMBANOVA_KEY"):
+        llms.append(ChatOpenAI(
+            model="Meta-Llama-3.3-70B-Instruct", # Use Llama 3.3 70B for fast accurate synthesis
+            openai_api_key=os.environ["SAMBANOVA_KEY"],
+            openai_api_base="https://api.sambanova.ai/v1",
+            temperature=0,
+            request_timeout=30
+        ))
+    
+    if os.environ.get("OPENROUTER_KEY"):
+         llms.append(ChatOpenAI(
+            model="openai/gpt-4o-mini",
+            openai_api_key=os.environ["OPENROUTER_KEY"],
+            openai_api_base="https://openrouter.ai/api/v1",
+            temperature=0
+        ))
+         
+    # Ollama as absolute last resort
+    llms.append(ChatOpenAI(
+        model="llama3.1", 
+        openai_api_key="ollama", 
+        openai_api_base="http://localhost:11434/v1",
+        temperature=0
+    ))
+    return llms
 
 
 # ---------------------------------------------------------------------------
@@ -302,19 +337,61 @@ def chief_justice_node(state: AgentState) -> dict:
     summary_lines.append(f"Repo: {len(repo_manifest)} files; {len(verified_paths)} cross-referenced.")
     executive_summary = "\n".join(summary_lines)
 
-    remediation_plan = "\n".join(
+    remediation_plan_intro = "\n".join(
         f"- {r.remediation}"
         for r in results
         if r.remediation and r.remediation != "No issues found."
     ) or "No remediation needed."
 
+    # Metacognition: LLM Polish for Executive Summary and Remediation Plan
+    print("  [Justice] LLM Synthesis starting (Layer 3)...")
+    time.sleep(1.0 + random.uniform(0.5, 2.0)) # Give some breather after judges
+    
+    from src.state import JusticeOutput # Import for structured output
+    justice_llms = get_justice_llm()
+    executive_summary_final = executive_summary
+    remediation_plan_final = remediation_plan_intro
+
+    prompt = f"""
+    You are the Chief Justice. Review the deterministic summary and remediation plan.
+    Polish them into a professional, cohesive, and insightful narrative.
+    
+    Deterministic Summary:
+    {executive_summary}
+    
+    Initial Remediation:
+    {remediation_plan_intro}
+    """
+
+    for model in justice_llms:
+        # Small delay between fallback attempts
+        time.sleep(random.uniform(0.5, 1.5))
+        model_name = getattr(model, "model_name", getattr(model, "model", "Unknown"))
+        try:
+            structured_llm = model.with_structured_output(JusticeOutput)
+            if not structured_llm:
+                continue
+                
+            resp = structured_llm.invoke([
+                SystemMessage(content="You are the Chief Justice. Synthesize the final audit report into a professional narrative."),
+                HumanMessage(content=prompt)
+            ])
+            
+            if resp:
+                executive_summary_final = resp.summary
+                remediation_plan_final = resp.remediation
+                break
+        except Exception as e:
+            print(f"  [Justice] {model_name} failed: {str(e)[:100]}")
+            continue
+
     final_report = AuditReport(
         repo_url=state["repo_url"],
         repo_name=(state["repo_url"].split("/")[-1] if state.get("repo_url") else None),
         overall_score=overall_score,
-        executive_summary=executive_summary,
+        executive_summary=executive_summary_final,
         criteria=results,
-        remediation_plan=remediation_plan,
+        remediation_plan=remediation_plan_final,
         verified_paths=verified_paths,
         hallucinated_paths=hallucinated_paths,
     )

@@ -19,8 +19,8 @@ class Evidence(BaseModel):
 
 class JudicialOpinion(BaseModel):
     """Evaluation of evidence against a specific criterion."""
-    judge: Literal["Prosecutor", "Defense", "TechLead"]
-    criterion_id: str
+    judge: Optional[Literal["Prosecutor", "Defense", "TechLead"]] = None
+    criterion_id: Optional[str] = None
     score: int = Field(ge=1, le=5, description="Score 1-5")
     argument: str = Field(description="Detailed reasoning based strictly on cited evidence")
     cited_evidence: List[str] = Field(description="List of evidence IDs or findings used in the argument")
@@ -41,6 +41,11 @@ class CriterionResult(BaseModel):
     remediation: str = Field(
         description="Specific file-level instructions for improvement",
     )
+
+class JusticeOutput(BaseModel):
+    """Structured output for the Chief Justice synthesis."""
+    summary: str = Field(description="The polished executive summary narrative")
+    remediation: str = Field(description="The polished remediation plan narrative")
 
 class AuditReport(BaseModel):
     """The final compiled report."""
