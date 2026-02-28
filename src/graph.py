@@ -24,7 +24,11 @@ def load_rubric(state: AgentState) -> dict:
         return {"rubric_dimensions": []}
 
 def evidence_aggregator(state: AgentState) -> dict:
-    """Aggregates evidence and performs hallucination checks."""
+    """
+    Node: State Synchronization & Hallucination Filter.
+    Implementation of [State Synchronization]: Merges parallel detective outputs into a 
+    single unified state while filtering citations against the codebase manifest.
+    """
     print("--- Aggregator: EvidenceAggregator ---")
     import re
     
@@ -64,7 +68,11 @@ def evidence_aggregator(state: AgentState) -> dict:
     }
 
 def judges_entry(state: AgentState) -> dict:
-    """No-op fan-out hub: pass-through to allow conditional routing to judges."""
+    """
+    Node: Judicial Dialectics Hub.
+    Starts the [Dialectical Synthesis] phase by triggering three parallel persona nodes 
+    to evaluate the synchronized evidence.
+    """
     return {}
 
 def evidence_router(state: AgentState) -> str:
