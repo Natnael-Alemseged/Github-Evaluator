@@ -83,73 +83,67 @@ def evidence_router(state: AgentState) -> str:
 
 def report_writer(state: AgentState) -> dict:
     """Node: Writes the final report to a Markdown file.
-    Structure: Executive Summary -> Criterion Breakdown -> Remediation Plan (no console print).
+    Structure: Executive Summary -> Per-Criterion Breakdown -> Dissent Summaries -> Remediation Plan.
     """
     print("--- Reporter: MarkdownWriter ---")
     report = state.get("final_report")
-    report_path = "audit/report_onself_generated/report.md"
-    os.makedirs("audit/report_onself_generated", exist_ok=True)
+    report_path = "audit/final_audit_report.md"
+    os.makedirs("audit", exist_ok=True)
     
     if not report:
-        print("No report to write (e.g. audit skipped due to no evidence). Writing minimal report.")
+        print("No report to write. Writing minimal report.")
         try:
             with open(report_path, "w") as f:
-                f.write("# Audit Report\n\nNo evidence was collected. Audit skipped. Check detective nodes or repo URL.\n")
-            print(f"Report written to {report_path}")
+                f.write("# Final Audit Report\n\nNo evidence was collected. Audit incomplete.\n")
         except Exception as e:
             print(f"Failed to write report: {e}")
         return state
     
-    md_content = f"""# Audit Report: {report.repo_name or 'Repository'}
+    md_content = f"""# Final Audit Report: {report.repo_name or 'Repository'}
 
-## Executive Summary
+## 1. Executive Summary
 
 {report.executive_summary}
 
-## Criterion Breakdown
+---
 
-### Evidence Integrity
-- **Repo Manifest:** {len(state.get('repo_manifest', []))} files scanned from the repository.
-- **Verified Paths (cited in evidence):** {', '.join(sorted(set(report.verified_paths))) if report.verified_paths else 'None'}
-- **Hallucinated Paths (cited but not in repo):** {', '.join(sorted(set(report.hallucinated_paths))) if report.hallucinated_paths else 'None ✅'}
+## 2. Per-Criterion Breakdown
 
-### Overall Score: {report.overall_score:.2f} / 5.0
-
-### Score Summary
-
-| Dimension | Prosecutor | Defense | TechLead | Final | Verdict |
-|-----------|:----------:|:-------:|:--------:|:-----:|:-------:|
+| Dimension | Prosecutor | Defense | TechLead | Final Score | Verdict |
+|:----------|:----------:|:-------:|:--------:|:-----------:|:-------:|
 """
     for res in report.criteria:
         p_score = next((op.score for op in res.judge_opinions if op.judge == "Prosecutor"), "—")
         d_score = next((op.score for op in res.judge_opinions if op.judge == "Defense"), "—")
         t_score = next((op.score for op in res.judge_opinions if op.judge == "TechLead"), "—")
-        verdict = "Pass" if res.final_score >= 3 else "Fail"
+        verdict = "✅ PASS" if res.final_score >= 3 else "❌ FAIL"
         md_content += f"| {res.dimension_name} | {p_score} | {d_score} | {t_score} | **{res.final_score}** | {verdict} |\n"
 
-    md_content += "\n### Dimension Details\n"
+    md_content += "\n--- \n\n## 3. Judicial Opinions & Dissent Summaries\n"
     for res in report.criteria:
-        verdict = "Pass" if res.final_score >= 3 else "Fail"
-        md_content += f"""
-#### {res.dimension_name}
-- **Final Score:** {res.final_score} / 5
-- **Verdict:** {verdict}
-- **Dissent / Notes:** {res.dissent_summary if res.dissent_summary else "Consensus reached."}
-- **Remediation:** {res.remediation if res.remediation else "No issues found."}
-"""
+        md_content += f"\n### ⚖️ {res.dimension_name}\n"
+        md_content += f"- **Status:** {'Pass' if res.final_score >= 3 else 'Fail'} ({res.final_score}/5)\n"
+        md_content += f"- **Dissent/Synthesis:** {res.dissent_summary or 'Consensus reached.'}\n"
+        md_content += "\n#### Judge Arguments:\n"
         for op in res.judge_opinions:
-            arg_text = getattr(op, "argument", "")
-            md_content += f"  - **{op.judge}** (score {op.score}): {arg_text}\n"
+            md_content += f"- **{op.judge}:** {op.argument}\n"
 
-    md_content += "\n## Remediation Plan\n\n"
+    md_content += "\n--- \n\n## 4. Concrete File-Level Remediation Steps\n\n"
+    md_content += "### 🛠️ Action Plan\n\n"
     md_content += report.remediation_plan + "\n"
-        
+    
+    md_content += "\n--- \n\n## 5. Evidence Integrity Audit\n"
+    md_content += f"- **Verified Files (Pinned):** {len(report.verified_paths)}\n"
+    md_content += f"- **Hallucinated Files (Filtered):** {len(report.hallucinated_paths)}\n"
+    if report.hallucinated_paths:
+        md_content += f"- **Flagged Hallucinations:** {', '.join(report.hallucinated_paths)}\n"
+
     try:
         with open(report_path, "w") as f:
             f.write(md_content)
-        print(f"Report written to {report_path}")
+        print(f"✅ Final Audit Report written to: {report_path}")
     except Exception as e:
-        print(f"Failed to write report: {e}")
+        print(f"❌ Failed to write report: {e}")
         
     return state
 
