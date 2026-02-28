@@ -224,12 +224,13 @@ if __name__ == "__main__":
     from src.tools.repo_tools import is_safe_url
     
     async def run_audit():
+        import sys
         print("Starting Automaton Auditor...")
         clear_vector_store()
         
         default_repo = "https://github.com/Natnael-Alemseged/Github-Evaluator"
+        repo_url = sys.argv[1] if len(sys.argv) > 1 else default_repo
         
-        repo_url = default_repo
         print(f"✅ Target Repo: {repo_url}")
         
         run_id = f"audit_{uuid.uuid4().hex[:8]}"
