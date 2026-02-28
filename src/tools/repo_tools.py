@@ -9,7 +9,9 @@ def is_safe_url(url: str) -> bool:
     """Basic sanitization for repository URLs."""
     try:
         parsed = urlparse(url)
-        # Allow only github.com or similar trusted hosts for now
+        # Allow github.com or local file paths for testing
+        if parsed.scheme == "file":
+            return True
         return parsed.scheme in ["https", "git"] and "github.com" in parsed.netloc
     except Exception:
         return False
