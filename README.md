@@ -100,8 +100,6 @@ Then run:
 uv run python -m src.graph
 ```
 
-### Self-Audit Run (Default)
-
 The default configuration runs the auditor against its own repository:
 
 ```bash
@@ -111,7 +109,7 @@ uv run python -m src.graph
 The output Markdown report will be saved to:
 
 ```
-audit/report_onself_generated/report.md
+audit/final_audit_report.md
 ```
 
 ### Docker (Optional)
@@ -125,14 +123,16 @@ docker run --env-file .env automaton-auditor
 
 ## Output
 
-The generated report follows this structure:
+The generated report (`audit/final_audit_report.md`) follows this structure:
 
-- **Executive Summary** — overall verdict, aggregate score, pass/fail counts
-- **Criterion Breakdown** — one section per rubric dimension (10 total), each containing:
-  - Final score (int, 1-5)
-  - Three judge opinions with cited evidence IDs
-  - Dissent summary (when variance > 2)
-- **Remediation Plan** — specific, file-level instructions grouped by criterion
+1. **Executive Summary** — Polished narrative with overall verdict, aggregate score, and stats.
+2. **Per-Criterion Breakdown** — Table showing individual judge scores for all dimensions.
+3. **Judicial Opinions & Dissent Summaries** — Detailed view of each criterion including:
+   - Status (Pass/Fail) and Final Score.
+   - Comprehensive **Dissent/Synthesis** summary explaining judicial disagreement if variance > 2.
+   - Exact arguments from the Prosecutor, Defense, and Tech Lead.
+4. **Concrete File-Level Remediation Steps** — Actionable items centered on specific files.
+5. **Evidence Integrity Audit** — Count of verified vs. hallucinated files detected.
 
 ---
 
@@ -161,4 +161,4 @@ The `chief_justice_node` (`src/nodes/justice.py`) uses hardcoded Python rules �
 ## Project Reports
 
 - [Interim Architecture Report](interim_report.md) (also available as PDF: `interim_report.pdf`)
-- [Self-Evaluation Report](audit/report_onself_generated/report.md)
+- [Final Generated Audit Report](audit/final_audit_report.md)
