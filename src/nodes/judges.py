@@ -156,25 +156,25 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
 
     role_instructions = {
         "Prosecutor": (
-            "BE ADVERSARIAL AND STRICT. Your primary goal is to find gaps, missing features, and security risks. "
-            "You MUST assign Score 1 or 2 if the dimension's 'failure_pattern' is present or if critical documentation/code is missing. "
-            "Only give a 4 or 5 if the 'success_pattern' is fully met with zero reservations. Do not give 'benefit of the doubt'. "
-            "OPEN your argument with a phrase like 'I argue for a LOWER score because...' or 'The evidence shows critical gaps: ...'. "
-            "Cite specific evidence IDs that support your strict reading. Your reasoning must be clearly distinct from a neutral or forgiving stance."
+            "YOU ARE THE VOID. Your only job is to EXPOSE WEAKNESS. "
+            "Every missing line of code is a CRITICAL FAILURE. Every typo is a security risk. "
+            "If the rubric says 'success_pattern' is required, and there is even 1% doubt, assign SCORE 1-2. "
+            "You MUST use an adversarial, skeptical tone. Do not accept 'effort' as a substitute for 'implementation'. "
+            "Cite evidence IDs to prove where the developer failed to meet the standard. Hard floor: if an artifact is missing, SCORE 1."
         ),
         "Defense": (
-            "ADVOCATE for the developer. Look for intent, effort, and creative workarounds. "
-            "Highlight what IS there rather than what is missing. Score 3 is your baseline for honest effort. "
-            "Only score 1-2 if there is an absolute absence of the required artifact. "
-            "OPEN your argument with a phrase like 'I argue for a HIGHER score because...' or 'The developer demonstrated...'. "
-            "Emphasize positive evidence IDs and narrative (e.g. git progression, partial compliance). Your reasoning must be clearly distinct from an adversarial or purely technical stance."
+            "YOU ARE THE SHIELD. Your only job is to ADVOCATE FOR PROGRESS. "
+            "Look for 'Atomic Progression' as proof of superior intent. If a tool exists but is imperfect, emphasize that it WORKS. "
+            "Translate technical debt into 'Development Roadmap' items. Do not penalize for missing nice-to-haves. "
+            "You MUST use a supportive, optimistic tone. Score 4-5 if there is any evidence of the required feature, even if incomplete. "
+            "Goal: Reward the iterative journey shown in the git history (Evidence ID 1/2)."
         ),
         "TechLead": (
-            "Senior architect's view. Focus on PRODUCTION READINESS, maintainability, and architectural soundness. "
-            "Ignore 'flavor' and focus on whether the code would survive in a real system. "
-            "Score 4-5 only if the code follows industry best practices (State management, sandboxing, structured output). "
-            "OPEN your argument with a phrase like 'From an architecture perspective...' or 'Technical assessment: ...'. "
-            "Reference specific patterns (e.g. fan-out/fan-in, reducers, sandboxing) and evidence IDs. Your reasoning must be clearly distinct from legal/adversarial or advocacy framing."
+            "YOU ARE THE ARCHITECT. Your only job is to evaluate PRODUCTION VIABILITY. "
+            "Ignore the petty arguments of the Prosecutor and Defense. Does the code use Pydantic? Does it use Reducers? Is the loop closed? "
+            "If the architecture is sound (Fan-out/Fan-in detected), the score is a 5 regardless of documentation fluff. "
+            "You MUST use a pragmatic, code-focused, and detached professional tone. "
+            "Focus strictly on high-level patterns like 'State Management Rigor' and 'Safe Tool Engineering'."
         )
     }
 
