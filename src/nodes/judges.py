@@ -7,6 +7,7 @@ from typing import List, Literal, Optional
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from src.state import AgentState, JudicialOpinion, Evidence, CriterionResult, AuditReport
 
 # --- Setup LLM Fallback ---
@@ -211,25 +212,32 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
             if not structured_llm:
                 continue
                 
+            @retry(
+                stop=stop_after_attempt(3),
+                wait=wait_exponential(multiplier=1, min=4, max=10),
+                retry=retry_if_exception_type(Exception),
+                reraise=True
+            )
+            def invoke_with_retry(llm, sys_msg, hum_msg):
+                return llm.invoke([sys_msg, hum_msg])
+
             print(f"  [LLM] Requesting batch from {model_name}...")
-            batch_resp = structured_llm.invoke([
+            batch_resp = invoke_with_retry(
+                structured_llm,
                 SystemMessage(content=f"You are the {judge_role}."),
                 HumanMessage(content=prompt)
-            ])
+            )
             
             # Post-process to ensure IDs are correct
             for op in batch_resp.opinions:
                 op.judge = judge_role
-                if not op.criterion_id and len(batch_resp.opinions) == len(rubric_dimensions):
-                     # fallback assignment if model missed IDs but sent right count
-                     pass 
             
             return batch_resp.opinions
             
         except Exception as e:
-            print(f"  [LLM] {model_name} failed batch call: {str(e)[:150]}")
+            print(f"  [LLM] {model_name} failed batch call after retries: {str(e)[:150]}")
             if _is_rate_limit_error(e):
-                time.sleep(15) # Wait for cooling
+                time.sleep(15) # Final wait before trying next provider
             continue
 
     # Critical Fallback: minimal scores if all providers fail
