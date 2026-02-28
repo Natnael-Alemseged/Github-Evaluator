@@ -154,18 +154,41 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
     final_llms = [m for m in final_llms if m is not None]
 
     role_instructions = {
-        "Prosecutor": "BE ADVERSARIAL BUT FACTUALLY ACCURATE. Look for gaps. Respect verified evidence.",
-        "Defense": "ADVOCATE for the developer. Reward effort and intent. Focus on logical growth.",
-        "TechLead": "Senior architect's view. Focus on production readiness and maintainability."
+        "Prosecutor": (
+            "BE ADVERSARIAL AND STRICT. Your primary goal is to find gaps, missing features, and security risks. "
+            "You MUST assign Score 1 or 2 if the dimension's 'failure_pattern' is present or if critical documentation/code is missing. "
+            "Only give a 4 or 5 if the 'success_pattern' is fully met with zero reservations. Do not give 'benefit of the doubt'. "
+            "OPEN your argument with a phrase like 'I argue for a LOWER score because...' or 'The evidence shows critical gaps: ...'. "
+            "Cite specific evidence IDs that support your strict reading. Your reasoning must be clearly distinct from a neutral or forgiving stance."
+        ),
+        "Defense": (
+            "ADVOCATE for the developer. Look for intent, effort, and creative workarounds. "
+            "Highlight what IS there rather than what is missing. Score 3 is your baseline for honest effort. "
+            "Only score 1-2 if there is an absolute absence of the required artifact. "
+            "OPEN your argument with a phrase like 'I argue for a HIGHER score because...' or 'The developer demonstrated...'. "
+            "Emphasize positive evidence IDs and narrative (e.g. git progression, partial compliance). Your reasoning must be clearly distinct from an adversarial or purely technical stance."
+        ),
+        "TechLead": (
+            "Senior architect's view. Focus on PRODUCTION READINESS, maintainability, and architectural soundness. "
+            "Ignore 'flavor' and focus on whether the code would survive in a real system. "
+            "Score 4-5 only if the code follows industry best practices (State management, sandboxing, structured output). "
+            "OPEN your argument with a phrase like 'From an architecture perspective...' or 'Technical assessment: ...'. "
+            "Reference specific patterns (e.g. fan-out/fan-in, reducers, sandboxing) and evidence IDs. Your reasoning must be clearly distinct from legal/adversarial or advocacy framing."
+        )
     }
 
     # BATCH CALL
     prompt = f"""
     You are the {judge_role}. 
-    Role: {role_instructions.get(judge_role)}
+    Philosophy: {role_instructions.get(judge_role)}
     
     Evaluate the following dimensions based on the evidence provided.
     
+    ### SCORING ANCHORS (MANDATORY CALIBRATION):
+    - **Score 1-2 (FAIL):** The 'failure_pattern' from the rubric is observed, or the artifact is missing/hallucinated.
+    - **Score 3 (PARTIAL):** Some progress made, but falls short of the full 'success_pattern'. 
+    - **Score 4-5 (PASS):** The 'success_pattern' is clearly and fully satisfied with verifiable evidence IDs.
+
     Evidence:
     {evidence_text}
     
@@ -174,8 +197,8 @@ def get_judge_opinion(judge_role: Literal["Prosecutor", "Defense", "TechLead"], 
     
     Return a list of opinions, one for each dimension. 
     Each opinion MUST include:
-    - 'score' (1-5)
-    - 'argument' (detailed)
+    - 'score' (int 1-5)
+    - 'argument' (detailed, citing specific evidence IDs)
     - 'cited_evidence' (list of evidence IDs)
     - 'criterion_id' (matching the dimension id)
     - 'judge' (set to '{judge_role}')

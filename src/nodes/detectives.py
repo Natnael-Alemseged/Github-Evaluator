@@ -155,11 +155,11 @@ def repo_investigator(state: AgentState) -> dict:
             security_analysis = analyze_security_features(repo_path)
             evidences.append(Evidence(
                 detective_name="RepoInvestigator",
-                goal="Scan for secure tool engineering",
+                goal="Scan for secure tool engineering and identify 'failure_patterns'",
                 found="Uses 'tempfile' for isolated sandboxing" in security_analysis,
-                content=security_analysis,
+                content=security_analysis + "\nVerification: Checking for lack of sandboxing or insecure subprocess calls as per failure_pattern.",
                 location="src/tools/repo_tools.py",
-                rationale="Scan for subprocess safety and temporary directory sandboxing.",
+                rationale="Forensic scan for both compliance and anti-patterns in tool engineering.",
                 confidence=1.0
             ))
             
@@ -217,11 +217,15 @@ def doc_analyst(state: AgentState) -> dict:
 
     evidences.append(Evidence(
         detective_name="DocAnalyst",
-        goal="Theoretical Depth check",
+        goal="Identify both theoretical depth and keyword dropping/missing concepts",
         found=True,
-        content="\n\n".join(results),
+        content=(
+            "Analysis of documentation for core theoretical depth:\n"
+            + "\n".join(results)
+            + "\n\nNote: If any term shows 'No relevant information', it indicates a critical gap or failure to document the theoretical basis."
+        ),
         location=pdf_path,
-        rationale="Vector search for required theoretical terms.",
+        rationale="Vector search for required theoretical terms, looking for substantive explanations vs buzzword dropping.",
         confidence=0.9
     ))
     return {"evidences": {"doc_analyst": evidences}}
@@ -239,7 +243,12 @@ def vision_inspector(state: AgentState) -> dict:
     import random
     
     llms = get_detective_llms()
-    vision_question = "Is this a StateGraph diagram or a generic box diagram? Does it show parallel fan-out to detectives/judges and fan-in to an aggregator?"
+    vision_question = (
+        "Analyze this architectural diagram. "
+        "1. Identify sections that match the 'success_pattern' (parallel fan-out to Detectives, Aggregation, parallel fan-out to Judges, Chief Justice). "
+        "2. Explicitly list any missing elements, linear bottlenecks, or contradictions with the parallel architecture claim. "
+        "Be specific about what is NOT there."
+    )
 
     # Small jitter before vision call
     time.sleep(random.uniform(0.5, 2.0))
