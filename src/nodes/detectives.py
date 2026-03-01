@@ -197,6 +197,10 @@ def repo_investigator(state: AgentState) -> dict:
         ))
         all_files = []
     
+    # Print structured findings for visibility
+    for ev in evidences:
+        print(f"  [Evidence Found] Goal: {ev.goal[:50]}... | Location: {ev.location} | Confidence: {ev.confidence}")
+
     return {
         "evidences": {"repo_investigator": evidences},
         "repo_manifest": state.get("repo_manifest", []),

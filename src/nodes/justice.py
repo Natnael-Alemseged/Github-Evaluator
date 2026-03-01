@@ -276,6 +276,8 @@ def chief_justice_node(state: AgentState) -> dict:
             strict_limit = p_score + 1
             if final_score > strict_limit:
                 final_score = strict_limit
+                msg = f"  [Chief Justice] PROSECUTOR FLOOR applied to {criterion_id}: Cap {strict_limit}"
+                print(msg)
                 dissent.append(f"PROSECUTOR FLOOR: Final score capped at {strict_limit} due to Prosecutor's adversarial finding (score {p_score}).")
 
         # Concrete remediation: If score < 5, try to be specific

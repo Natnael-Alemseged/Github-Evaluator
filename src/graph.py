@@ -235,15 +235,17 @@ if __name__ == "__main__":
         
         default_repo = "https://github.com/Natnael-Alemseged/Github-Evaluator"
         repo_url = sys.argv[1] if len(sys.argv) > 1 else default_repo
+        pdf_input = sys.argv[2] if len(sys.argv) > 2 else "interim_report.pdf"
         
         print(f"✅ Target Repo: {repo_url}")
+        print(f"✅ Target PDF: {pdf_input}")
         
         run_id = f"audit_{uuid.uuid4().hex[:8]}"
         config = {"configurable": {"thread_id": run_id}}
         
         initial_state = {
             "repo_url": repo_url,
-            "pdf_path": "interim_report.pdf", # Report to cross-reference
+            "pdf_path": pdf_input, # Report to cross-reference
             "rubric_dimensions": [],
             "evidences": {},
             "opinions": [],

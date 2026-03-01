@@ -38,8 +38,7 @@ class RepoSandbox:
         self.temp_dir = None
     
     def __enter__(self):
-        self._temp_ctx = tempfile.TemporaryDirectory(prefix="auditor_")
-        self.temp_dir = self._temp_ctx.__enter__()
+        self.temp_dir = tempfile.mkdtemp(prefix="auditor_")
         print(f"Cloning {self.repo_url} into {self.temp_dir}...")
         
         try:
@@ -52,13 +51,15 @@ class RepoSandbox:
             )
             return self.temp_dir
         except subprocess.CalledProcessError as e:
-            self._temp_ctx.__exit__(None, None, None)
+            import shutil
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
             raise RuntimeError(f"Git clone failed: {e.stderr}") from e
         
     def cleanup(self):
         """Manually trigger cleanup of the sandbox."""
-        if self._temp_ctx is not None:
-            self._temp_ctx.__exit__(None, None, None)
+        if self.temp_dir and os.path.exists(self.temp_dir):
+            import shutil
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
             print("Cleaned up git sandbox")
             
     def __exit__(self, exc_type, exc_val, exc_tb):
